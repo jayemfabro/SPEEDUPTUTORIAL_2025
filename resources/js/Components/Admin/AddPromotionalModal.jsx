@@ -74,7 +74,7 @@ export default function AddPromotionalModal({
                           name="title"
                           id="title"
                           required
-                          value={data.title}
+                          value={data.title || ""}
                           onChange={handleInputChange}
                           className="shadow-sm focus:ring-orange-500 focus:border-orange-500 block w-full sm:text-sm border-gray-300 rounded-md"
                           placeholder="Enter post title"
@@ -97,7 +97,7 @@ export default function AddPromotionalModal({
                           name="description"
                           rows="3"
                           required
-                          value={data.description}
+                          value={data.description || ""}
                           onChange={handleInputChange}
                           className="shadow-sm focus:ring-orange-500 focus:border-orange-500 block w-full sm:text-sm border-gray-300 rounded-md"
                           placeholder="Enter post description"
@@ -182,7 +182,7 @@ export default function AddPromotionalModal({
                         <select
                           id="status"
                           name="status"
-                          value={data.status}
+                          value={data.status || "draft"}
                           onChange={handleInputChange}
                           className="shadow-sm focus:ring-orange-500 focus:border-orange-500 block w-full sm:text-sm border-gray-300 rounded-md"
                         >
@@ -194,15 +194,14 @@ export default function AddPromotionalModal({
 
                     <div className="sm:col-span-3">
                       <label htmlFor="expires_at" className="block text-sm font-medium text-gray-700">
-                        Expiry Date <span className="text-red-500">*</span>
+                        Expiry Date
                       </label>
                       <div className="mt-1 relative rounded-md shadow-sm">
                         <input
                           type="date"
                           name="expires_at"
                           id="expires_at"
-                          required
-                          value={data.expires_at}
+                          value={data.expires_at || ""}
                           min={new Date().toISOString().split('T')[0]}
                           onChange={handleInputChange}
                           className="shadow-sm focus:ring-orange-500 focus:border-orange-500 block w-full sm:text-sm border-gray-300 rounded-md pl-3 pr-10 py-2"

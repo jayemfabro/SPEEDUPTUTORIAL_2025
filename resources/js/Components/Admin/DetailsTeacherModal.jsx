@@ -1,21 +1,20 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
     X, 
     Mail, 
     Phone, 
-    Award, 
     Calendar, 
     User, 
-    BookOpen, 
     Star, 
     Clock, 
     BarChart2, 
     GraduationCap,
-    Briefcase,
     User as UserIcon,
     AtSign,
     Cake,
-    BookOpen as BookIcon
+    UserCheck,
+    UserX,
+    AlertCircle
 } from 'lucide-react';
 import { Transition } from '@headlessui/react';
 import { motion } from 'framer-motion';
@@ -39,8 +38,25 @@ const DetailItem = ({ icon: Icon, label, value, className = '' }) => {
     );
 };
 
-const DetailsTeacherModal = ({ isOpen, onClose, teacher }) => {
+const DetailsTeacherModal = ({ isOpen, onClose, teacher, onStatusChange }) => {
+    const [isUpdating, setIsUpdating] = useState(false);
+    
     if (!teacher) return null;
+
+    const isActive = teacher.status === 'active';
+
+    const handleStatusToggle = async () => {
+        if (!onStatusChange) return;
+        
+        setIsUpdating(true);
+        try {
+            await onStatusChange(teacher.id, isActive ? 'inactive' : 'active');
+        } catch (error) {
+            console.error('Error updating teacher status:', error);
+        } finally {
+            setIsUpdating(false);
+        }
+    };
 
     return (
         <Transition show={isOpen} as={React.Fragment}>
@@ -109,16 +125,9 @@ const DetailsTeacherModal = ({ isOpen, onClose, teacher }) => {
                                     </div>
                                     <h2 className="text-2xl font-bold text-gray-900 mt-4">{teacher.name}</h2>
                                     <div className="flex flex-wrap items-center gap-2">
-                                        {teacher.specialization && (
-                                            <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-gradient-to-r from-orange-50 to-amber-50 text-amber-800 border border-amber-100">
-                                                {teacher.specialization}
-                                            </span>
-                                        )}
-                                        {teacher.experience && (
-                                            <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-50 text-blue-800 border border-blue-100">
-                                                {teacher.experience} Exp
-                                            </span>
-                                        )}
+                                        <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-gradient-to-r from-orange-50 to-amber-50 text-amber-800 border border-amber-100">
+                                            Teacher
+                                        </span>
                                         <div className="flex items-center text-amber-500">
                                             {[...Array(5)].map((_, i) => (
                                                 <Star key={i} className="h-4 w-4 fill-current" />
@@ -126,63 +135,59 @@ const DetailsTeacherModal = ({ isOpen, onClose, teacher }) => {
                                         </div>
                                     </div>
                                 </motion.div>
+                                {/* Teacher class stats - modern card grid */}
+                                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 mb-6">
+                                    <div className="flex items-center bg-blue-50 rounded-xl p-4">
+                                        <GraduationCap className="h-6 w-6 text-blue-500 mr-3" />
+                                        <div>
+                                            <div className="text-xs text-gray-500 font-medium">Total Classes</div>
+                                            <div className="text-lg font-bold text-gray-900">{teacher.total_classes}</div>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center bg-green-50 rounded-xl p-4">
+                                        <BarChart2 className="h-6 w-6 text-green-500 mr-3" />
+                                        <div>
+                                            <div className="text-xs text-gray-500 font-medium">Completed</div>
+                                            <div className="text-lg font-bold text-gray-900">{teacher.completed_classes}</div>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center bg-yellow-50 rounded-xl p-4">
+                                        <Clock className="h-6 w-6 text-yellow-500 mr-3" />
+                                        <div>
+                                            <div className="text-xs text-gray-500 font-medium">Cancelled</div>
+                                            <div className="text-lg font-bold text-gray-900">{teacher.cancelled_classes}</div>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center bg-pink-50 rounded-xl p-4">
+                                        <Star className="h-6 w-6 text-pink-500 mr-3" />
+                                        <div>
+                                            <div className="text-xs text-gray-500 font-medium">FC Consumed</div>
+                                            <div className="text-lg font-bold text-gray-900">{teacher.fc_consumed_classes}</div>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center bg-blue-100 rounded-xl p-4">
+                                        <UserX className="h-6 w-6 text-blue-700 mr-3" />
+                                        <div>
+                                            <div className="text-xs text-gray-500 font-medium">Absent w/ntc counted</div>
+                                            <div className="text-lg font-bold text-gray-900">{teacher.absent_w_ntc_counted}</div>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center bg-blue-50 rounded-xl p-4">
+                                        <UserX className="h-6 w-6 text-blue-500 mr-3" />
+                                        <div>
+                                            <div className="text-xs text-gray-500 font-medium">Absent w/ntc-not counted</div>
+                                            <div className="text-lg font-bold text-gray-900">{teacher.absent_w_ntc_not_counted}</div>
+                                        </div>
+                                    </div>
+                                </div>
 
                                 <div className="space-y-3">
                                     <motion.div 
-                                        className="grid grid-cols-1 md:grid-cols-2 gap-4 bg-gray-50 p-4 rounded-xl mb-4"
+                                        className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-gray-50 p-4 rounded-xl mb-4"
                                         initial={{ opacity: 0, y: 10 }}
                                         animate={{ opacity: 1, y: 0 }}
                                         transition={{ duration: 0.4, delay: 0.1 }}
                                     >
-                                        <div className="bg-white p-3 rounded-lg shadow-sm border border-gray-100">
-                                            <div className="flex items-center">
-                                                <div className="p-2 bg-blue-50 rounded-lg text-blue-500">
-                                                    <GraduationCap className="h-5 w-5" />
-                                                </div>
-                                                <div className="ml-3">
-                                                    <p className="text-xs text-gray-500">Courses</p>
-                                                    <p className="font-semibold">12</p>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div className="bg-white p-3 rounded-lg shadow-sm border border-gray-100">
-                                            <div className="flex items-center">
-                                                <div className="p-2 bg-green-50 rounded-lg text-green-500">
-                                                    <BarChart2 className="h-5 w-5" />
-                                                </div>
-                                                <div className="ml-3">
-                                                    <p className="text-xs text-gray-500">Rating</p>
-                                                    <div className="flex items-center">
-                                                        <span className="font-semibold mr-1">4.8</span>
-                                                        <Star className="h-3 w-3 text-amber-400 fill-current" />
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div className="bg-white p-3 rounded-lg shadow-sm border border-gray-100">
-                                            <div className="flex items-center">
-                                                <div className="p-2 bg-purple-50 rounded-lg text-purple-500">
-                                                    <Award className="h-5 w-5" />
-                                                </div>
-                                                <div className="ml-3">
-                                                    <p className="text-xs text-gray-500">Experience</p>
-                                                    <p className="font-semibold">{teacher.experience || 'N/A'}</p>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div className="bg-white p-3 rounded-lg shadow-sm border border-gray-100">
-                                            <div className="flex items-center">
-                                                <div className="p-2 bg-amber-50 rounded-lg text-amber-500">
-                                                    <Clock className="h-5 w-5" />
-                                                </div>
-                                                <div className="ml-3">
-                                                    <p className="text-xs text-gray-500">Status</p>
-                                                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800">
-                                                        Active
-                                                    </span>
-                                                </div>
-                                            </div>
-                                        </div>
                                     </motion.div>
 
                                     <motion.div 
@@ -196,8 +201,18 @@ const DetailsTeacherModal = ({ isOpen, onClose, teacher }) => {
                                             <div className="space-y-2">
                                                 <DetailItem 
                                                     icon={UserIcon} 
-                                                    label="Full Name" 
-                                                    value={`${teacher.first_name || ''} ${teacher.middle_name ? teacher.middle_name + ' ' : ''}${teacher.last_name || ''}`.trim()} 
+                                                    label="First Name" 
+                                                    value={teacher.firstName} 
+                                                />
+                                                <DetailItem 
+                                                    icon={UserIcon} 
+                                                    label="Middle Name" 
+                                                    value={teacher.middleName} 
+                                                />
+                                                <DetailItem 
+                                                    icon={UserIcon} 
+                                                    label="Last Name" 
+                                                    value={teacher.lastName} 
                                                 />
                                                 <DetailItem 
                                                     icon={AtSign} 
@@ -217,28 +232,11 @@ const DetailsTeacherModal = ({ isOpen, onClose, teacher }) => {
                                                 <DetailItem 
                                                     icon={Cake} 
                                                     label="Birthdate" 
-                                                    value={teacher.birthdate ? new Date(teacher.birthdate).toLocaleDateString() : ''} 
-                                                />
-                                            </div>
-                                        </div>
-
-                                        <div className="space-y-3 mt-6">
-                                            <h3 className="text-sm font-semibold text-gray-700 uppercase tracking-wider mb-2">Professional Information</h3>
-                                            <div className="space-y-2">
-                                                <DetailItem 
-                                                    icon={Award} 
-                                                    label="Specialization" 
-                                                    value={teacher.specialization} 
-                                                />
-                                                <DetailItem 
-                                                    icon={Briefcase} 
-                                                    label="Experience" 
-                                                    value={teacher.experience} 
-                                                />
-                                                <DetailItem 
-                                                    icon={Calendar} 
-                                                    label="Availability" 
-                                                    value={teacher.availability} 
+                                                    value={teacher.birthdate ? new Date(teacher.birthdate).toLocaleDateString('en-US', { 
+                                                        year: 'numeric', 
+                                                        month: '2-digit', 
+                                                        day: '2-digit' 
+                                                    }) : ''} 
                                                 />
                                             </div>
                                         </div>
@@ -261,6 +259,56 @@ const DetailsTeacherModal = ({ isOpen, onClose, teacher }) => {
                                             </div>
                                         </motion.div>
                                     )}
+
+                                    {!isActive && (
+                                        <motion.div 
+                                            className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4 flex items-start"
+                                            initial={{ opacity: 0, y: 10 }}
+                                            animate={{ opacity: 1, y: 0 }}
+                                            transition={{ duration: 0.3 }}
+                                        >
+                                            <div className="flex-shrink-0">
+                                                <AlertCircle className="h-5 w-5 text-red-500" />
+                                            </div>
+                                            <div className="ml-3">
+                                                <h3 className="text-sm font-medium text-red-800">Account Deactivated</h3>
+                                                <div className="mt-1 text-sm text-red-700">
+                                                    <p>This teacher account is currently inactive. The user cannot log in until the account is reactivated.</p>
+                                                </div>
+                                            </div>
+                                        </motion.div>
+                                    )}
+
+                                    <motion.div
+                                        className="mt-4"
+                                        initial={{ opacity: 0, y: 10 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        transition={{ duration: 0.4, delay: 0.4 }}
+                                    >
+                                        <button
+                                            type="button"
+                                            onClick={handleStatusToggle}
+                                            disabled={isUpdating}
+                                            className={`w-full px-4 py-2 text-sm font-medium rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 transition-all duration-200 flex items-center justify-center ${
+                                                isActive 
+                                                    ? 'bg-red-600 text-white hover:bg-red-700 focus:ring-red-500' 
+                                                    : 'bg-green-600 text-white hover:bg-green-700 focus:ring-green-500'
+                                            } ${isUpdating ? 'opacity-50 cursor-not-allowed' : ''}`}
+                                        >
+                                            {isUpdating ? (
+                                                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                                            ) : (
+                                                <>
+                                                    {isActive ? (
+                                                        <UserX className="h-4 w-4 mr-2" />
+                                                    ) : (
+                                                        <UserCheck className="h-4 w-4 mr-2" />
+                                                    )}
+                                                </>
+                                            )}
+                                            {isUpdating ? 'Updating...' : (isActive ? 'Deactivate Account' : 'Activate Account')}
+                                        </button>
+                                    </motion.div>
                                 </div>
                             </div>
                             <div className="bg-gray-50 px-6 py-4 sm:px-6 flex justify-between border-t border-gray-100">
@@ -274,12 +322,6 @@ const DetailsTeacherModal = ({ isOpen, onClose, teacher }) => {
                                         className="px-5 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500 transition-all duration-200"
                                     >
                                         Close
-                                    </button>
-                                    <button
-                                        type="button"
-                                        className="px-5 py-2 text-sm font-medium text-white bg-gradient-to-r from-orange-500 to-amber-500 rounded-md shadow-sm hover:from-orange-600 hover:to-amber-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500 transition-all duration-200"
-                                    >
-                                        Send Message
                                     </button>
                                 </div>
                             </div>

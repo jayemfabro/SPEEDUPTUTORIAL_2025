@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import AdminLayout from "@/Layouts/AdminLayout";
 import AddPromotionalModal from "@/Components/Admin/AddPromotionalModal";
 import UpdatePromotional from "@/Components/Admin/UpdatePromtional";
+import axios from "axios";
 import { 
   PlusCircle, 
   Calendar, 
@@ -59,7 +60,7 @@ const Button = ({
     );
 };
 
-export default function Promotional({ auth }) {
+export default function Promotional({ auth, posts: initialPosts = [] }) {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isUpdateModalOpen, setIsUpdateModalOpen] = useState(false);
     const [selectedPost, setSelectedPost] = useState(null);
@@ -68,38 +69,7 @@ export default function Promotional({ auth }) {
     const [dropdownOpen, setDropdownOpen] = useState(null);
     const [imagePreview, setImagePreview] = useState(null);
     const [updateImagePreview, setUpdateImagePreview] = useState(null);
-    const [posts, setPosts] = useState([
-        {
-            id: 1,
-            title: "Summer Special Offer",
-            description:
-                "Get 20% off on all courses this summer! Limited time offer.",
-            image: "https://images.unsplash.com/photo-1501504905252-473c47e087f8?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1074&q=80",
-            status: "active",
-            created_at: "2023-06-15T10:30:00Z",
-            expires_at: "2023-07-31T23:59:59Z",
-        },
-        {
-            id: 2,
-            title: "New Course Alert",
-            description:
-                "Check out our new course on Advanced JavaScript! Learn modern frameworks and best practices.",
-            image: "https://images.unsplash.com/photo-1555066931-4365d14bab8c?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1170&q=80",
-            status: "draft",
-            created_at: "2023-06-10T14:20:00Z",
-            expires_at: "2023-08-15T23:59:59Z",
-        },
-        {
-            id: 3,
-            title: "Webinar Announcement",
-            description:
-                "Join our free webinar on React 18 features and updates. Limited seats available!",
-            image: "https://images.unsplash.com/photo-1434030216411-0b793f4b4173?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=1170&q=80",
-            status: "active",
-            created_at: "2023-06-05T09:15:00Z",
-            expires_at: "2023-06-30T23:59:59Z",
-        },
-    ]);
+    const [posts, setPosts] = useState(initialPosts);
 
     const { data, setData, post, processing, errors, reset } = useForm({
         title: "",
@@ -121,57 +91,109 @@ export default function Promotional({ auth }) {
         }
     };
 
-    const handleSubmit = (e) => {
+    const handleSubmit = async (e) => {
         e.preventDefault();
-        const newPost = {
-            id: posts.length + 1,
-            title: data.title,
-            description: data.description,
-            image: imagePreview || "https://via.placeholder.com/600x400",
-            status: data.status,
-            created_at: new Date().toISOString(),
-            expires_at: data.expires_at,
-        };
-        setPosts([newPost, ...posts]);
-        setIsModalOpen(false);
-        reset();
-        setImagePreview(null);
-    };
+        
+        try {
+            const formData = new FormData();
+            formData.append('title', data.title);
+            formData.append('description', data.description);
+            formData.append('status', data.status);
+            formData.append('expires_at', data.expires_at || "");
+            
+            if (data.image) {
+                formData.append('image', data.image);
+            }
 
-    const deletePost = (id) => {
-        if (window.confirm("Are you sure you want to delete this post?")) {
-            setPosts(posts.filter((post) => post.id !== id));
+            const response = await axios.post('/api/admin/promotional', formData, {
+                headers: {
+                    'Content-Type': 'multipart/form-data',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+            });
+
+            if (response.status === 201) {
+                setPosts([response.data.post, ...posts]);
+                setIsModalOpen(false);
+                reset();
+                setImagePreview(null);
+                
+                // Show success notification (you can implement this)
+                console.log(response.data.message);
+            }
+        } catch (error) {
+            console.error('Error creating promotional post:', error);
+            if (error.response) {
+                console.error('Error response:', error.response.data);
+                // Show detailed validation errors
+                if (error.response.data.errors) {
+                    const errorMessages = Object.values(error.response.data.errors).flat();
+                    console.error('Validation errors:', errorMessages);
+                } else {
+                    console.error('Error message:', error.response.data.message || 'Unknown error');
+                }
+            } else {
+                console.error('Network error:', error.message);
+            }
         }
     };
 
-    const toggleStatus = (id) => {
-        setPosts(
-            posts.map((post) =>
-                post.id === id
-                    ? {
-                          ...post,
-                          status:
-                              post.status === "active" ? "inactive" : "active",
-                      }
-                    : post
-            )
-        );
+    const deletePost = async (id) => {
+        if (window.confirm("Are you sure you want to delete this post?")) {
+            try {
+                await axios.delete(`/api/admin/promotional/${id}`);
+                setPosts(posts.filter((post) => post.id !== id));
+                console.log('Post deleted successfully');
+            } catch (error) {
+                console.error('Error deleting post:', error);
+            }
+        }
     };
 
-    const handleUpdate = (updatedData) => {
-        setPosts(
-            posts.map((post) =>
-                post.id === selectedPost.id
-                    ? {
-                          ...post,
-                          ...updatedData,
-                          image: updateImagePreview || post.image,
-                      }
-                    : post
-            )
-        );
-        setIsUpdateModalOpen(false);
-        setUpdateImagePreview(null);
+    const toggleStatus = async (id) => {
+        try {
+            const response = await axios.patch(`/api/admin/promotional/${id}/toggle-status`);
+            setPosts(
+                posts.map((post) =>
+                    post.id === id ? response.data.post : post
+                )
+            );
+            console.log(response.data.message);
+        } catch (error) {
+            console.error('Error updating status:', error);
+        }
+    };
+
+    const handleUpdate = async (updatedData) => {
+        try {
+            const formData = new FormData();
+            formData.append('title', updatedData.title);
+            formData.append('description', updatedData.description);
+            formData.append('status', updatedData.status);
+            formData.append('expires_at', updatedData.expires_at || "");
+            
+            if (updatedData.image && updatedData.image instanceof File) {
+                formData.append('image', updatedData.image);
+            }
+
+            const response = await axios.post(`/api/admin/promotional/${selectedPost.id}`, formData, {
+                headers: {
+                    'Content-Type': 'multipart/form-data',
+                    'X-HTTP-Method-Override': 'PUT'
+                },
+            });
+
+            setPosts(
+                posts.map((post) =>
+                    post.id === selectedPost.id ? response.data.post : post
+                )
+            );
+            setIsUpdateModalOpen(false);
+            setUpdateImagePreview(null);
+            console.log(response.data.message);
+        } catch (error) {
+            console.error('Error updating promotional post:', error);
+        }
     };
 
     const openUpdateModal = (post) => {
@@ -368,7 +390,8 @@ export default function Promotional({ auth }) {
                 {/* Posts Grid */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mt-6">
                     <AnimatePresence>
-                        {filteredPosts.map((post) => (
+                        {filteredPosts.length > 0 ? (
+                            filteredPosts.map((post) => (
                             <motion.div
                                 key={post.id}
                                 initial={{ opacity: 0, y: 20 }}
@@ -422,12 +445,10 @@ export default function Promotional({ auth }) {
                                             <span>
                                                 Expires:{" "}
                                                 <span className="font-medium">
-                                                    {format(
-                                                        new Date(
-                                                            post.expires_at
-                                                        ),
+                                                    {post.expires_at ? format(
+                                                        new Date(post.expires_at),
                                                         "MMM d, yyyy"
-                                                    )}
+                                                    ) : 'No expiry date'}
                                                 </span>
                                             </span>
                                         </div>
@@ -464,7 +485,32 @@ export default function Promotional({ auth }) {
                                     </div>
                                 </div>
                             </motion.div>
-                        ))}
+                        ))
+                        ) : (
+                            <motion.div
+                                initial={{ opacity: 0, y: 20 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                className="col-span-full text-center py-20 px-6 bg-white rounded-xl shadow-sm border border-gray-100"
+                            >
+                                <div className="mx-auto h-20 w-20 flex items-center justify-center rounded-full bg-navy-50 mb-4">
+                                    <Calendar className="h-4 w-4 text-navy-600" />
+                                </div>
+                                <h3 className="text-lg font-semibold text-gray-900 mb-2">No promotional posts found</h3>
+                                <p className="text-gray-500 mb-6 max-w-md mx-auto">
+                                    {searchQuery || statusFilter 
+                                        ? "We couldn't find any posts matching your criteria. Try adjusting your search or filters."
+                                        : "You haven't created any promotional posts yet. Create your first post to get started!"
+                                    }
+                                </p>
+                                <button
+                                    onClick={openModal}
+                                    className="inline-flex items-center px-4 py-2 bg-gradient-to-r from-navy-600 to-navy-700 hover:from-navy-700 hover:to-navy-800 text-white text-sm font-medium rounded-lg transition-all duration-300 transform hover:scale-105"
+                                >
+                                    <PlusCircle className="h-4 w-4 mr-2" />
+                                    Create Your First Post
+                                </button>
+                            </motion.div>
+                        )}
                     </AnimatePresence>
                 </div>
             </div>

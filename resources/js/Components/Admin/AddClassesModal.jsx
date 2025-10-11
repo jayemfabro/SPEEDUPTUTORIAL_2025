@@ -1,5 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { Transition } from "@headlessui/react";
+import axios from "axios";
+import { CLASS_STATUS_COLORS } from "@/utils/colorMapping";
 import {
     X,
     ChevronDown,
@@ -17,6 +19,7 @@ import {
     CalendarX,
     XCircle,
 } from "lucide-react";
+import { toast } from "react-toastify";
 
 const AddClassesModal = ({
     isOpen,
@@ -30,9 +33,110 @@ const AddClassesModal = ({
     const dropdownRef = useRef(null);
     const timeDropdownRef = useRef(null);
     const classTypeDropdownRef = useRef(null);
+    const studentDropdownRef = useRef(null);
+    const [teachers, setTeachers] = useState([]);
+    const [students, setStudents] = useState([]);
+    const [filteredStudents, setFilteredStudents] = useState([]);
+    const [studentSearchQuery, setStudentSearchQuery] = useState("");
+    const [loading, setLoading] = useState(false);
+    // Add state for all classes
+    const [allClasses, setAllClasses] = useState([]);
+    // Bulk selection state for group class
+    const [selectedStudents, setSelectedStudents] = useState([]);
+
+    // Reset selected students when modal opens or class type changes
+    useEffect(() => {
+        if (!isOpen || formData.classType !== 'Group') {
+            setSelectedStudents([]);
+        }
+    }, [isOpen, formData.classType]);
+
+    // Handle bulk student select for group class
+    const handleBulkStudentSelect = (student) => {
+        if (formData.classType !== 'Group') return;
+        setSelectedStudents((prev) => {
+            if (prev.some((s) => s.id === student.id)) {
+                return prev.filter((s) => s.id !== student.id);
+            } else {
+                return [...prev, student];
+            }
+        });
+    };
+
+    // For single student select (non-group)
+    const handleSingleStudentSelect = (student) => {
+        onInputChange({ target: { name: 'studentName', value: student.name } });
+        onInputChange({ target: { name: 'student_name', value: student.name } });
+        onInputChange({ target: { name: 'student_email', value: student.email } });
+        onInputChange({ target: { name: 'student_id', value: student.id } });
+        setDropdownOpen(null);
+    };
+
+    // Fetch active teachers and students when modal opens
+    useEffect(() => {
+        if (isOpen) {
+            fetchActiveTeachers();
+            fetchStudents();
+            fetchClasses(); // Fetch classes on modal open
+        }
+    }, [isOpen]);
+
+    const fetchActiveTeachers = async () => {
+        try {
+            setLoading(true);
+            const response = await axios.get("/api/admin/active-teachers");
+            setTeachers(response.data);
+        } catch (error) {
+            console.error("Error fetching active teachers:", error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const fetchStudents = async () => {
+        try {
+            setLoading(true);
+            const response = await axios.get("/api/admin/students");
+            setStudents(response.data || []);
+            setFilteredStudents(response.data || []);
+        } catch (error) {
+            console.error("Error fetching students:", error);
+            setStudents([]);
+            setFilteredStudents([]);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const fetchClasses = async () => {
+        try {
+            const response = await axios.get('/api/admin/classes');
+            setAllClasses(response.data || []);
+        } catch (error) {
+            console.error('Error fetching classes:', error);
+            setAllClasses([]);
+        }
+    };
+
+    // Helper to get used count for a student and class type
+    const getUsedCount = (student, type) => {
+        return allClasses.filter(
+            cls =>
+                cls.student_name === student.name &&
+                cls.class_type && cls.class_type.toLowerCase() === type &&
+                ["Completed", "Absent w/ntc counted", "FC consumed"].includes(cls.status)
+        ).length;
+    };
 
     const handleDropdownToggle = (dropdown) => {
-        setDropdownOpen(dropdownOpen === dropdown ? null : dropdown);
+        const newState = dropdownOpen === dropdown ? null : dropdown;
+        setDropdownOpen(newState);
+        
+        // Reset student search when opening student dropdown
+        if (dropdown === "student" && newState === "student") {
+            setStudentSearchQuery("");
+            setFilteredStudents(students);
+        }
     };
 
     const handleTimeSelect = (timeValue) => {
@@ -41,7 +145,7 @@ const AddClassesModal = ({
     };
 
     const handleClassTypeSelect = (classType) => {
-        onInputChange({ target: { name: "class_type", value: classType } });
+        onInputChange({ target: { name: "classType", value: classType } });
         setDropdownOpen(null);
     };
 
@@ -65,59 +169,75 @@ const AddClassesModal = ({
 
     const statusOptions = [
         {
-            value: "FC not consumed (RG)",
-            label: "FC not consumed (RG)",
+            value: "Valid for Cancellation",
+            label: "Valid for Cancellation",
+            icon: CheckCircle,
+            bgColor: "bg-gray-300",
+            borderColor: "border-gray-300",
+            textColor: "text-gray-900",
+        },
+        {
+            value: "Free Class",
+            label: "Free Class",
             icon: Zap,
-            bgColor: "bg-purple-100",
-            textColor: "text-purple-900",
-        },
-        {
-            value: "FC consumed (RG)",
-            label: "FC consumed (RG)",
-            icon: ZapOff,
-            bgColor: "bg-purple-200",
-            textColor: "text-purple-900",
-        },
-        {
-            value: "Completed (RG)",
-            label: "Completed (RG)",
-            icon: CheckCircle,
-            bgColor: "bg-green-100",
-            textColor: "text-green-900",
-        },
-        {
-            value: "Completed (PRM)",
-            label: "Completed (PRM)",
-            icon: CheckCircle,
-            bgColor: "bg-blue-100",
-            textColor: "text-blue-900",
-        },
-        {
-            value: "Absent w/ntc counted (RG)",
-            label: "Absent w/ntc counted (RG)",
-            icon: Clock,
-            bgColor: "bg-yellow-100",
+            bgColor: "bg-yellow-400",
+            borderColor: "border-yellow-500",
             textColor: "text-yellow-900",
         },
         {
-            value: "Absent w/o ntc counted (RG)",
-            label: "Absent w/o ntc counted (RG)",
-            icon: AlertCircle,
-            bgColor: "bg-amber-100",
-            textColor: "text-amber-900",
+            value: "FC not consumed",
+            label: "FC not consumed",
+            icon: Zap,
+            bgColor: "bg-yellow-400",
+            borderColor: "border-yellow-500",
+            textColor: "text-yellow-900",
         },
         {
-            value: "Absent w/ntc-not counted (RG)",
-            label: "Absent w/ntc-not counted (RG)",
-            icon: CalendarX,
-            bgColor: "bg-orange-100",
-            textColor: "text-orange-900",
+            value: "Completed",
+            label: "Completed",
+            icon: CheckCircle,
+            bgColor: "bg-green-400",
+            borderColor: "border-green-500",
+            textColor: "text-green-900",
         },
         {
-            value: "Cancelled (RG)",
-            label: "Cancelled (RG)",
+            value: "Absent w/ntc counted",
+            label: "Absent w/ntc counted",
+            icon: Clock,
+            bgColor: "bg-blue-400",
+            borderColor: "border-blue-500",
+            textColor: "text-blue-900",
+        },
+        {
+                    value: "Cancelled",
+        label: "Cancelled",
             icon: XCircle,
-            bgColor: "bg-red-100",
+            bgColor: "bg-purple-400",
+            borderColor: "border-purple-500",
+            textColor: "text-purple-900",
+        },
+        {
+            value: "Absent w/ntc-not counted",
+            label: "Absent w/ntc-not counted",
+            icon: CalendarX,
+            bgColor: "bg-gray-600",
+            borderColor: "border-gray-500",
+            textColor: "text-gray-900",
+        },
+        {
+            value: "FC consumed",
+            label: "FC consumed",
+            icon: ZapOff,
+            bgColor: "bg-pink-400",
+            borderColor: "border-pink-400",
+            textColor: "text-pink-900",
+        },
+        {
+            value: "Absent Without Notice",
+            label: "Absent Without Notice",
+            icon: CalendarX,
+            bgColor: "bg-red-400",
+            borderColor: "border-red-500",
             textColor: "text-red-900",
         },
     ];
@@ -127,22 +247,28 @@ const AddClassesModal = ({
             value: "Regular",
             label: "Regular Class",
             icon: User,
-            bgColor: "bg-blue-100",
-            textColor: "text-blue-900",
+            bgColor: "bg-navy-500",
+            textColor: "text-white",
+            iconBgColor: "bg-navy-600",
+            iconTextColor: "text-white",
         },
         {
             value: "Premium",
             label: "Premium Class",
             icon: Gem,
-            bgColor: "bg-purple-100",
-            textColor: "text-purple-900",
+            bgColor: "bg-orange-400",
+            textColor: "text-white",
+            iconBgColor: "bg-orange-500",
+            iconTextColor: "text-white",
         },
         {
             value: "Group",
             label: "Group Class",
             icon: Users,
-            bgColor: "bg-green-100",
-            textColor: "text-green-900",
+            bgColor: "bg-[#4A9782]",
+            textColor: "text-white",
+            iconBgColor: "bg-[#4A9782]",
+            iconTextColor: "text-white",
         },
     ];
 
@@ -150,8 +276,9 @@ const AddClassesModal = ({
         const option = statusOptions.find((opt) => opt.value === status);
         return (
             option || {
-                bg: "bg-gray-100",
-                text: "text-gray-700",
+                bgColor: "bg-gray-600",
+                borderColor: "border-gray-700",
+                textColor: "text-gray-700",
                 icon: HelpCircle,
             }
         );
@@ -161,18 +288,56 @@ const AddClassesModal = ({
         const option = classTypeOptions.find((opt) => opt.value === type);
         return (
             option || {
-                bg: "bg-gray-100",
-                text: "text-gray-700",
-                icon: "HelpCircle",
+                bgColor: "bg-gray-100",
+                textColor: "text-gray-700",
+                iconBgColor: "bg-gray-500",
+                iconTextColor: "text-white",
+                icon: HelpCircle,
+                label: "Unknown",
             }
         );
+    };
+
+    // Handle student search
+    const handleStudentSearch = (e) => {
+        const query = e.target.value;
+        setStudentSearchQuery(query);
+        
+        if (query.trim() === "") {
+            setFilteredStudents(students);
+        } else {
+            const filtered = students.filter(
+                student => {
+                    const hasName = student.name && student.name.toLowerCase().includes(query.toLowerCase());
+                    const hasEmail = student.email && student.email.toLowerCase().includes(query.toLowerCase());
+                    return hasName || hasEmail;
+                }
+            );
+            setFilteredStudents(filtered);
+        }
+    };
+
+    // Handle student selection
+    const handleStudentSelect = (student) => {
+        onInputChange({ target: { name: "studentName", value: student.name } });
+        onInputChange({ target: { name: "student_name", value: student.name } });
+        onInputChange({ target: { name: "student_email", value: student.email } });
+        onInputChange({ target: { name: "student_id", value: student.id } });
+        setDropdownOpen(null);
     };
 
     useEffect(() => {
         const handleClickOutside = (event) => {
             if (
+                studentDropdownRef.current &&
+                !studentDropdownRef.current.contains(event.target) &&
+                dropdownOpen === "student"
+            ) {
+                setDropdownOpen(null);
+            } else if (
                 dropdownRef.current &&
-                !dropdownRef.current.contains(event.target)
+                !dropdownRef.current.contains(event.target) &&
+                dropdownOpen !== "student"
             ) {
                 setDropdownOpen(null);
             }
@@ -181,7 +346,40 @@ const AddClassesModal = ({
         document.addEventListener("mousedown", handleClickOutside);
         return () =>
             document.removeEventListener("mousedown", handleClickOutside);
-    }, []);
+    }, [dropdownOpen]);
+
+    // On submit, if group, pass selectedStudents
+    const handleFormSubmit = (e) => {
+        e.preventDefault();
+        if (formData.classType === 'Group') {
+            if (selectedStudents.length === 0) {
+                toast.error('Please select at least one student for group class.');
+                return;
+            }
+            // Pass selected students array to parent
+            onSubmit(e, selectedStudents);
+            return;
+        }
+        // Single student logic (existing)
+        const student = students.find(s => s.name === formData.studentName);
+        if (!student) {
+            toast.error('Please select a student.');
+            return;
+        }
+        let purchased = 0;
+        let typeKey = 'regular';
+        if (formData.classType === 'Regular') { purchased = student.purchased_class_regular || 0; typeKey = 'regular'; }
+        else if (formData.classType === 'Premium') { purchased = student.purchased_class_premium || 0; typeKey = 'premium'; }
+        else if (formData.classType === 'Group') { purchased = student.purchased_class_group || 0; typeKey = 'group'; }
+        const used = getUsedCount(student, typeKey);
+        const remaining = purchased - used;
+        if (remaining <= 0) {
+            toast.error(`No remaining purchased ${formData.classType} classes for this student.`);
+            return;
+        }
+        onSubmit(e);
+    };
+
     return (
         <Transition show={isOpen} as={React.Fragment}>
             <div className="fixed inset-0 overflow-y-auto z-50">
@@ -234,30 +432,118 @@ const AddClassesModal = ({
                                     <X className="h-5 w-5" />
                                 </button>
                             </div>
-                            <form onSubmit={onSubmit}>
+                            <form onSubmit={handleFormSubmit}>
                                 <div className="bg-white px-6 pt-6 pb-4 sm:p-6 sm:pb-4">
                                     <div className="grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-6">
-                                        {/* Student Name */}
+                                        {/* Student Name Dropdown */}
                                         <div className="sm:col-span-6">
                                             <label
-                                                htmlFor="student_name"
+                                                htmlFor="studentName"
                                                 className="block text-sm font-medium text-gray-700"
                                             >
                                                 Student Name
                                             </label>
-                                            <div className="mt-1">
-                                                <input
-                                                    type="text"
-                                                    name="student_name"
-                                                    id="student_name"
-                                                    required
-                                                    value={
-                                                        formData.student_name ||
-                                                        ""
-                                                    }
-                                                    onChange={onInputChange}
-                                                    className="shadow-sm focus:ring-orange-500 focus:border-orange-500 block w-full sm:text-sm border-gray-300 rounded-md"
-                                                />
+                                            <div className="relative w-full mt-1" ref={studentDropdownRef}>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleDropdownToggle("student")}
+                                                    aria-haspopup="listbox"
+                                                    aria-expanded={dropdownOpen === "student"}
+                                                    className={`w-full text-left px-3 py-2 text-sm font-medium rounded-md transition-all duration-200 flex items-center justify-between ${
+                                                        dropdownOpen === "student"
+                                                            ? "bg-orange-50 border border-orange-200 text-navy-700"
+                                                            : "bg-white border border-gray-300 text-navy-700 hover:bg-gray-50 shadow-sm"
+                                                    }`}
+                                                >
+                                                    <div className="flex items-center">
+                                                        <User className="h-4 w-4 mr-2 text-navy-400" />
+                                                        {formData.classType === 'Group' && selectedStudents.length > 0 ? (
+                                                            <span className="truncate">
+                                                                {selectedStudents.length} student{selectedStudents.length > 1 ? 's' : ''} selected
+                                                            </span>
+                                                        ) : formData.studentName ? (
+                                                            <span className="truncate">
+                                                                {formData.studentName}
+                                                            </span>
+                                                        ) : (
+                                                            <span className="text-gray-500">
+                                                                Select Student
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    {dropdownOpen === "student" ? (
+                                                        <ChevronUp className="h-4 w-4" />
+                                                    ) : (
+                                                        <ChevronDown className="h-4 w-4" />
+                                                    )}
+                                                </button>
+
+                                                {dropdownOpen === "student" && (
+                                                    <div className="absolute z-[60] mt-1 w-full min-w-[16rem] rounded-lg border border-gray-200 bg-white shadow-lg overflow-visible">
+                                                        <div className="p-2">
+                                                            <input
+                                                                type="text"
+                                                                placeholder="Type student name..."
+                                                                value={studentSearchQuery}
+                                                                onChange={handleStudentSearch}
+                                                                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                                                                onMouseDown={(e) => e.stopPropagation()}
+                                                                onClick={(e) => e.stopPropagation()}
+                                                                onFocus={(e) => e.stopPropagation()}
+                                                                autoFocus
+                                                            />
+                                                        </div>
+                                                        <div className="max-h-60 overflow-y-auto">
+                                                            <div className="p-2 space-y-1">
+                                                                {loading ? (
+                                                                    <div className="text-center py-2 text-sm text-gray-500">
+                                                                        Loading students...
+                                                                    </div>
+                                                                ) : filteredStudents.length > 0 ? (
+                                                                    filteredStudents.map((student) => {
+                                                                        const isSelected = formData.classType === 'Group'
+                                                                            ? selectedStudents.some((s) => s.id === student.id)
+                                                                            : formData.studentName === student.name;
+                                                                        return (
+                                                                            <div key={student.id} className="flex items-center w-full rounded-md px-3 py-2 text-left text-sm transition-all duration-200 hover:bg-gray-50">
+                                                                                {formData.classType === 'Group' && (
+                                                                                    <input
+                                                                                        type="checkbox"
+                                                                                        checked={isSelected}
+                                                                                        onChange={() => handleBulkStudentSelect(student)}
+                                                                                        className="mr-2 h-4 w-4 text-orange-500 border-gray-300 rounded focus:ring-orange-500"
+                                                                                    />
+                                                                                )}
+                                                                                <button
+                                                                                    type="button"
+                                                                                    className={`flex-1 flex flex-col text-left ${isSelected ? 'text-navy-700 font-semibold' : 'text-navy-700'}`}
+                                                                                    onMouseDown={(e) => {
+                                                                                        e.preventDefault();
+                                                                                        if (formData.classType === 'Group') {
+                                                                                            handleBulkStudentSelect(student);
+                                                                                        } else {
+                                                                                            handleSingleStudentSelect(student);
+                                                                                        }
+                                                                                    }}
+                                                                                >
+                                                                                    <span className="font-medium">{student.name}</span>
+                                                                                    <span className="text-xs text-gray-400">{student.email}</span>
+                                                                                </button>
+                                                                                {isSelected && (
+                                                                                    <Check className="h-4 w-4 ml-2 text-orange-500" />
+                                                                                )}
+                                                                            </div>
+                                                                        );
+                                                                    })
+                                                                ) : (
+                                                                    <div className="text-center py-2 text-sm text-gray-500">
+                                                                        No students found
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                )}
                                             </div>
                                         </div>
 
@@ -300,10 +586,10 @@ const AddClassesModal = ({
                                                 >
                                                     <div className="flex items-center">
                                                         <User className="h-4 w-4 mr-2 text-navy-400" />
-                                                        {formData.teacher_name ? (
+                                                        {formData.teacherName ? (
                                                             <span className="truncate">
                                                                 {
-                                                                    formData.teacher_name
+                                                                    formData.teacherName
                                                                 }
                                                             </span>
                                                         ) : (
@@ -328,7 +614,7 @@ const AddClassesModal = ({
                                                                     key="select-teacher"
                                                                     type="button"
                                                                     className={`w-full rounded-md px-3 py-2 text-left text-sm transition-all duration-200 flex items-center ${
-                                                                        !formData.teacher_name
+                                                                        !formData.teacherName
                                                                             ? "bg-navy-600 text-white"
                                                                             : "bg-gray-100 text-gray-500 hover:bg-gray-200"
                                                                     }`}
@@ -339,7 +625,15 @@ const AddClassesModal = ({
                                                                         onInputChange(
                                                                             {
                                                                                 target: {
-                                                                                    name: "teacher_name",
+                                                                                    name: "teacherName",
+                                                                                    value: "",
+                                                                                },
+                                                                            }
+                                                                        );
+                                                                        onInputChange(
+                                                                            {
+                                                                                target: {
+                                                                                    name: "teacher_id",
                                                                                     value: "",
                                                                                 },
                                                                             }
@@ -354,27 +648,19 @@ const AddClassesModal = ({
                                                                     </span>
                                                                     Select
                                                                     Teacher
-                                                                    {!formData.teacher_name && (
+                                                                    {!formData.teacherName && (
                                                                         <Check className="h-4 w-4 text-white ml-auto" />
                                                                     )}
                                                                 </button>
-                                                                {[
-                                                                    "Teacher 1",
-                                                                    "Teacher 2",
-                                                                    "Teacher 3",
-                                                                    "Teacher 4",
-                                                                    "Teacher 5",
-                                                                ].map(
-                                                                    (
-                                                                        teacher
-                                                                    ) => {
+                                                                {teachers.map(
+                                                                    (teacher) => {
                                                                         const isSelected =
-                                                                            formData.teacher_name ===
-                                                                            teacher;
+                                                                            formData.teacherName ===
+                                                                            teacher.name;
                                                                         return (
                                                                             <button
                                                                                 key={
-                                                                                    teacher
+                                                                                    teacher.id
                                                                                 }
                                                                                 type="button"
                                                                                 className={`w-full rounded-md px-3 py-2 text-left text-sm transition-all duration-200 flex items-center ${
@@ -389,8 +675,16 @@ const AddClassesModal = ({
                                                                                     onInputChange(
                                                                                         {
                                                                                             target: {
-                                                                                                name: "teacher_name",
-                                                                                                value: teacher,
+                                                                                                name: "teacherName",
+                                                                                                value: teacher.name,
+                                                                                            },
+                                                                                        }
+                                                                                    );
+                                                                                    onInputChange(
+                                                                                        {
+                                                                                            target: {
+                                                                                                name: "teacher_id",
+                                                                                                value: teacher.id,
                                                                                             },
                                                                                         }
                                                                                     );
@@ -402,7 +696,7 @@ const AddClassesModal = ({
                                                                                 <User className="h-4 w-4 mr-2 text-navy-400" />
                                                                                 <span className="flex-1">
                                                                                     {
-                                                                                        teacher
+                                                                                        teacher.name
                                                                                     }
                                                                                 </span>
                                                                                 {isSelected && (
@@ -422,7 +716,7 @@ const AddClassesModal = ({
                                         {/* Class Type */}
                                         <div className="sm:col-span-3">
                                             <label
-                                                htmlFor="class_type"
+                                                htmlFor="classType"
                                                 className="block text-sm font-medium text-gray-700"
                                             >
                                                 Class Type
@@ -464,26 +758,26 @@ const AddClassesModal = ({
                                                     }`}
                                                 >
                                                     <div className="flex items-center">
-                                                        {formData.class_type ? (
+                                                        {formData.classType ? (
                                                             <>
                                                                 <span
                                                                     className={`mr-2 ${
                                                                         getClassTypeOption(
-                                                                            formData.class_type
+                                                                            formData.classType
                                                                         )
-                                                                            .bgColor
+                                                                            .iconBgColor
                                                                     } rounded-full p-1`}
                                                                 >
                                                                     {React.createElement(
                                                                         getClassTypeOption(
-                                                                            formData.class_type
+                                                                            formData.classType
                                                                         ).icon,
                                                                         {
                                                                             className: `h-4 w-4 ${
                                                                                 getClassTypeOption(
-                                                                                    formData.class_type
+                                                                                    formData.classType
                                                                                 )
-                                                                                    .textColor
+                                                                                    .iconTextColor
                                                                             }`,
                                                                         }
                                                                     )}
@@ -492,15 +786,14 @@ const AddClassesModal = ({
                                                                     {classTypeOptions.find(
                                                                         (opt) =>
                                                                             opt.value ===
-                                                                            formData.class_type
+                                                                            formData.classType
                                                                     )?.label ||
-                                                                        formData.class_type}
+                                                                        formData.classType}
                                                                 </span>
                                                             </>
                                                         ) : (
                                                             <span className="text-gray-500">
                                                                 Select Class
-                                                                Type
                                                             </span>
                                                         )}
                                                     </div>
@@ -523,36 +816,10 @@ const AddClassesModal = ({
                                                             }}
                                                         >
                                                             <div className="p-2 space-y-1">
-                                                                <button
-                                                                    key="select-class-type"
-                                                                    type="button"
-                                                                    className={`w-full rounded-md px-3 py-2 text-left text-sm transition-all duration-200 flex items-center ${
-                                                                        !formData.class_type
-                                                                            ? "bg-navy-600 text-white"
-                                                                            : "bg-gray-100 text-gray-500 hover:bg-gray-200"
-                                                                    }`}
-                                                                    onMouseDown={(
-                                                                        e
-                                                                    ) => {
-                                                                        e.preventDefault();
-                                                                        handleClassTypeSelect(
-                                                                            ""
-                                                                        );
-                                                                    }}
-                                                                >
-                                                                    <span className="mr-2 rounded-full p-1">
-                                                                        <span className="h-4 w-4 opacity-0"></span>
-                                                                    </span>
-                                                                    Select Class
-                                                                    Type
-                                                                    {!formData.class_type && (
-                                                                        <Check className="h-4 w-4 text-white ml-auto" />
-                                                                    )}
-                                                                </button>
                                                                 {classTypeOptions.map(
                                                                     (type) => {
                                                                         const isSelected =
-                                                                            formData.class_type ===
+                                                                            formData.classType ===
                                                                             type.value;
                                                                         return (
                                                                             <button
@@ -578,7 +845,7 @@ const AddClassesModal = ({
                                                                                     className={`mr-2 ${
                                                                                         isSelected
                                                                                             ? "bg-white bg-opacity-20"
-                                                                                            : ""
+                                                                                            : type.iconBgColor
                                                                                     } rounded-full p-1`}
                                                                                 >
                                                                                     {React.createElement(
@@ -587,7 +854,7 @@ const AddClassesModal = ({
                                                                                             className: `h-4 w-4 ${
                                                                                                 isSelected
                                                                                                     ? "text-white"
-                                                                                                    : type.textColor
+                                                                                                    : type.iconTextColor
                                                                                             }`,
                                                                                             size: 16,
                                                                                         }
@@ -635,6 +902,85 @@ const AddClassesModal = ({
                                             </div>
                                         </div>
 
+                                        {/* Status Dropdown */}
+                                        <div className="sm:col-span-3">
+                                            <label
+                                                htmlFor="status"
+                                                className="block text-sm font-medium text-gray-700"
+                                            >
+                                                Status
+                                            </label>
+                                            <div className="relative mt-1" style={{ width: '304px', height: '38px' }}>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleDropdownToggle("status")}
+                                                    aria-haspopup="listbox"
+                                                    aria-expanded={dropdownOpen === "status"}
+                                                    className={`w-full h-full text-left px-3 py-2 text-sm font-medium rounded-md transition-all duration-200 flex items-center justify-between ${
+                                                        dropdownOpen === "status"
+                                                            ? "bg-orange-50 border border-orange-200 text-navy-700"
+                                                            : "bg-white border border-gray-300 text-navy-700 hover:bg-gray-50 shadow-sm"
+                                                    }`}
+                                                    style={{ height: '38px' }}
+                                                >
+                                                    <div className="flex items-center">
+                                                        {formData.status ? (
+                                                            <>
+                                                                <span className={`w-4 h-4 ${getStatusOption(formData.status).bgColor} ${getStatusOption(formData.status).borderColor} border rounded-sm mr-3 flex-shrink-0`}></span>
+                                                                <span className="truncate">
+                                                                    {formData.status}
+                                                                </span>
+                                                            </>
+                                                        ) : (
+                                                            <span className="text-gray-500">
+                                                                Select Status
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    {dropdownOpen === "status" ? (
+                                                        <ChevronUp className="h-4 w-4" />
+                                                    ) : (
+                                                        <ChevronDown className="h-4 w-4" />
+                                                    )}
+                                                </button>
+
+                                                {dropdownOpen === "status" && (
+                                                    <div className="absolute z-[60] mt-1 w-full min-w-[16rem] rounded-lg border border-gray-200 bg-white shadow-lg overflow-visible">
+                                                        <div className="max-h-60 overflow-y-auto">
+                                                            <div className="p-2 space-y-1">
+                                                                <button
+                                                                    key="valid-cancellation"
+                                                                    type="button"
+                                                                    className="w-full rounded-md px-3 py-2 text-left text-sm transition-all duration-200 flex items-center hover:bg-gray-100 text-gray-700"
+                                                                    onMouseDown={(e) => {
+                                                                        e.preventDefault();
+                                                                        onInputChange({ target: { name: 'status', value: 'Valid for Cancellation' } });
+                                                                        setDropdownOpen(null);
+                                                                    }}
+                                                                >
+                                                                    <span className="w-4 h-4 bg-gray-300 border border-gray-300 rounded-sm mr-3 flex-shrink-0"></span>
+                                                                    Valid for Cancellation
+                                                                </button>
+                                                                <button
+                                                                    key="free-class"
+                                                                    type="button"
+                                                                    className="w-full rounded-md px-3 py-2 text-left text-sm transition-all duration-200 flex items-center hover:bg-gray-100 text-gray-700"
+                                                                    onMouseDown={(e) => {
+                                                                        e.preventDefault();
+                                                                        onInputChange({ target: { name: 'status', value: 'Free Class' } });
+                                                                        setDropdownOpen(null);
+                                                                    }}
+                                                                >
+                                                                    <span className="w-4 h-4 bg-yellow-400 border border-yellow-500 rounded-sm mr-3 flex-shrink-0"></span>
+                                                                    Free Class
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+
                                         {/* Time Dropdown */}
                                         <div className="sm:col-span-3">
                                             <label
@@ -644,8 +990,9 @@ const AddClassesModal = ({
                                                 Time
                                             </label>
                                             <div
-                                                className="relative w-full mt-1"
+                                                className="relative mt-1"
                                                 ref={timeDropdownRef}
+                                                style={{ width: '304px', height: '38px' }}
                                             >
                                                 <button
                                                     type="button"
@@ -671,11 +1018,12 @@ const AddClassesModal = ({
                                                     aria-expanded={
                                                         dropdownOpen === "time"
                                                     }
-                                                    className={`w-full text-left px-3 py-2.5 text-sm font-medium rounded-lg transition-all duration-200 flex items-center justify-between h-[42px] ${
+                                                    className={`w-full h-full text-left px-3 py-2 text-sm font-medium rounded-md transition-all duration-200 flex items-center justify-between ${
                                                         dropdownOpen === "time"
                                                             ? "bg-orange-50 border border-orange-200 text-navy-700"
                                                             : "bg-white border border-gray-300 text-navy-700 hover:bg-gray-50 shadow-sm"
                                                     }`}
+                                                    style={{ height: '38px' }}
                                                 >
                                                     <div className="flex items-center">
                                                         <Clock className="h-4 w-4 mr-2 text-navy-400" />
@@ -780,192 +1128,7 @@ const AddClassesModal = ({
                                                 )}
                                             </div>
                                         </div>
-                                        {/* Status */}
-                                        <div className="sm:col-span-3">
-                                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                                                Status
-                                            </label>
-                                            <div
-                                                className="relative w-full"
-                                                ref={dropdownRef}
-                                            >
-                                                <button
-                                                    type="button"
-                                                    onClick={() =>
-                                                        handleDropdownToggle(
-                                                            "status"
-                                                        )
-                                                    }
-                                                    onBlur={() =>
-                                                        setTimeout(
-                                                            () =>
-                                                                setDropdownOpen(
-                                                                    null
-                                                                ),
-                                                            200
-                                                        )
-                                                    }
-                                                    aria-haspopup="listbox"
-                                                    aria-expanded={
-                                                        dropdownOpen ===
-                                                        "status"
-                                                    }
-                                                    className={`w-full text-left px-3 py-2 text-sm font-medium rounded-md transition-all duration-200 flex items-center justify-between ${
-                                                        dropdownOpen ===
-                                                        "status"
-                                                            ? "bg-orange-50 border border-orange-200 text-navy-700"
-                                                            : "bg-white border border-gray-300 text-navy-700 hover:bg-gray-50 shadow-sm"
-                                                    }`}
-                                                >
-                                                    <div className="flex items-center">
-                                                        {formData.status ? (
-                                                            <>
-                                                                <span
-                                                                    className={`mr-2 ${
-                                                                        getStatusOption(
-                                                                            formData.status
-                                                                        )
-                                                                            .bgColor
-                                                                    } rounded-full p-1`}
-                                                                >
-                                                                    {React.createElement(
-                                                                        getStatusOption(
-                                                                            formData.status
-                                                                        ).icon,
-                                                                        {
-                                                                            className: `h-4 w-4 ${
-                                                                                getStatusOption(
-                                                                                    formData.status
-                                                                                )
-                                                                                    .textColor
-                                                                            }`,
-                                                                        }
-                                                                    )}
-                                                                </span>
-                                                                <span className="truncate">
-                                                                    {statusOptions.find(
-                                                                        (opt) =>
-                                                                            opt.value ===
-                                                                            formData.status
-                                                                    )?.label ||
-                                                                        formData.status}
-                                                                </span>
-                                                            </>
-                                                        ) : (
-                                                            <span className="text-gray-500">
-                                                                Select Status
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                    {dropdownOpen ===
-                                                    "status" ? (
-                                                        <ChevronUp className="h-4 w-4" />
-                                                    ) : (
-                                                        <ChevronDown className="h-4 w-4" />
-                                                    )}
-                                                </button>
 
-                                                {dropdownOpen === "status" && (
-                                                    <div className="absolute z-[60] mt-1 w-full min-w-[16rem] rounded-lg border border-gray-200 bg-white shadow-lg overflow-visible">
-                                                        <div className="max-h-60 overflow-y-auto">
-                                                            <div className="p-2 space-y-1">
-                                                                <button
-                                                                    key="select-status"
-                                                                    type="button"
-                                                                    className={`w-full rounded-md px-3 py-2 text-left text-sm transition-all duration-200 flex items-center ${
-                                                                        !formData.status
-                                                                            ? "bg-navy-600 text-white"
-                                                                            : "bg-gray-100 text-gray-500 hover:bg-gray-200"
-                                                                    }`}
-                                                                    onClick={() => {
-                                                                        onInputChange(
-                                                                            {
-                                                                                target: {
-                                                                                    name: "status",
-                                                                                    value: "",
-                                                                                },
-                                                                            }
-                                                                        );
-                                                                        setDropdownOpen(
-                                                                            null
-                                                                        );
-                                                                    }}
-                                                                >
-                                                                    <span className="mr-2 rounded-full p-1">
-                                                                        <span className="h-4 w-4 opacity-0"></span>
-                                                                    </span>
-                                                                    Select
-                                                                    Status
-                                                                    {!formData.status && (
-                                                                        <Check className="h-4 w-4 text-white ml-auto" />
-                                                                    )}
-                                                                </button>
-                                                                {statusOptions.map(
-                                                                    (
-                                                                        status
-                                                                    ) => {
-                                                                        const isSelected =
-                                                                            formData.status ===
-                                                                            status.value;
-                                                                        return (
-                                                                            <button
-                                                                                key={
-                                                                                    status.value
-                                                                                }
-                                                                                type="button"
-                                                                                className={`w-full rounded-md px-3 py-2 text-left text-sm transition-all duration-200 flex items-center ${
-                                                                                    isSelected
-                                                                                        ? "bg-navy-600 text-white"
-                                                                                        : `${status.bgColor} ${status.textColor} hover:bg-opacity-80`
-                                                                                }`}
-                                                                                onClick={() => {
-                                                                                    onInputChange(
-                                                                                        {
-                                                                                            target: {
-                                                                                                name: "status",
-                                                                                                value: status.value,
-                                                                                            },
-                                                                                        }
-                                                                                    );
-                                                                                    setDropdownOpen(
-                                                                                        null
-                                                                                    );
-                                                                                }}
-                                                                            >
-                                                                                <span
-                                                                                    className={`mr-2 ${
-                                                                                        isSelected
-                                                                                            ? "bg-white bg-opacity-20"
-                                                                                            : ""
-                                                                                    } rounded-full p-1`}
-                                                                                >
-                                                                                    {React.createElement(
-                                                                                        status.icon,
-                                                                                        {
-                                                                                            className: `h-4 w-4 ${
-                                                                                                isSelected
-                                                                                                    ? "text-white"
-                                                                                                    : status.textColor
-                                                                                            }`,
-                                                                                        }
-                                                                                    )}
-                                                                                </span>
-                                                                                {
-                                                                                    status.label
-                                                                                }
-                                                                                {isSelected && (
-                                                                                    <Check className="h-4 w-4 ml-auto text-white" />
-                                                                                )}
-                                                                            </button>
-                                                                        );
-                                                                    }
-                                                                )}
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </div>
                                     </div>
                                 </div>
                                 <div className="bg-gray-50 px-6 py-4 sm:px-6 sm:flex sm:flex-row-reverse rounded-b-lg">

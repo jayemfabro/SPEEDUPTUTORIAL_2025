@@ -1,8 +1,10 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { Head, usePage } from "@inertiajs/react";
 import AdminLayout from "@/Layouts/AdminLayout";
 import DetailsCalendarModal from "@/Components/Admin/DetailsCalendarModal";
 import Legend from "@/Components/Admin/Legend";
+import { CLASS_TYPE_COLORS, CLASS_STATUS_COLORS } from "@/utils/colorMapping";
+import axios from "axios";
 import {
     ChevronLeft,
     ChevronRight,
@@ -20,6 +22,8 @@ import {
     XCircle,
     AlertCircle,
 } from "lucide-react";
+import { toast, ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 
 export default function AdminDailyCalendar() {
     const { auth } = usePage().props;
@@ -41,204 +45,133 @@ export default function AdminDailyCalendar() {
     // State for modal
     const [showDetailsModal, setShowDetailsModal] = useState(false);
     const [selectedEvent, setSelectedEvent] = useState(null);
+    
+    // State for teachers and classes
+    const [teachers, setTeachers] = useState([]);
+    const [loadingTeachers, setLoadingTeachers] = useState(false);
+    const [classes, setClasses] = useState([]);
+    const [loadingClasses, setLoadingClasses] = useState(false);
 
-    // Sample teacher data - would be fetched from API in a real app
-    const teachers = [
-        { id: "t1", name: "John Smith", email: "john@example.com" },
-        { id: "t2", name: "Sarah Johnson", email: "sarah@example.com" },
-        { id: "t3", name: "Michael Brown", email: "michael@example.com" },
+    // Status options for filter (matching the legend)
+    const statuses = [
+        "Valid for cancellation",
+        "FC not consumed",
+        "Completed",
+        "Absent w/ntc counted",
+        "Cancelled",
+        "Absent w/ntc-not counted",
+        "FC consumed",
     ];
 
-    // Dummy class data with teacher information
-    const [classes, setClasses] = useState([
-        {
-            id: 1,
-            student_name: "Aurora",
-            teacher_id: "t1",
-            teacher_name: "John Smith",
-            day: "Monday",
-            time: "17:00",
-            duration: 30,
-            class_type: "Regular",
-            status: "FC not consumed (RG)",
-        },
-        {
-            id: 2,
-            student_name: "Emma",
-            teacher_id: "t2",
-            teacher_name: "Sarah Johnson",
-            day: "Monday",
-            time: "18:00",
-            duration: 30,
-            class_type: "Premium",
-            status: "Completed (PRM)",
-        },
-        {
-            id: 3,
-            student_name: "Liam",
-            teacher_id: "t3",
-            teacher_name: "Michael Brown",
-            day: "Monday",
-            time: "18:30",
-            duration: 30,
-            class_type: "Group",
-            status: "Completed (RG)",
-        },
-        {
-            id: 4,
-            student_name: "Olivia",
-            teacher_id: "t1",
-            teacher_name: "John Smith",
-            day: "Monday",
-            time: "19:00",
-            duration: 30,
-            class_type: "Regular",
-            status: "Absent w/ntc counted (RG)",
-        },
-        {
-            id: 5,
-            student_name: "Noah",
-            teacher_id: "t2",
-            teacher_name: "Sarah Johnson",
-            day: "Monday",
-            time: "19:30",
-            duration: 30,
-            class_type: "Premium",
-            status: "Cancelled (RG)",
-        },
-        {
-            id: 6,
-            student_name: "Eddie",
-            teacher_id: "t3",
-            teacher_name: "Michael Brown",
-            day: "Monday",
-            time: "20:00",
-            duration: 30,
-            class_type: "Premium",
-            status: "Completed (PRM)",
-        },
-        {
-            id: 7,
-            student_name: "Jane Zhang",
-            teacher_id: "t1",
-            teacher_name: "John Smith",
-            day: "Monday",
-            time: "20:30",
-            duration: 30,
-            class_type: "Regular",
-            status: "Absent w/o ntc counted (RG)",
-        },
-        {
-            id: 8,
-            student_name: "Jane Zhang",
-            teacher_id: "t2",
-            teacher_name: "Sarah Johnson",
-            day: "Monday",
-            time: "21:00",
-            duration: 30,
-            class_type: "Regular",
-            status: "Absent w/ntc-not counted (RG)",
-        },
-        {
-            id: 9,
-            student_name: "Alice Bu",
-            teacher_id: "t3",
-            teacher_name: "Michael Brown",
-            day: "Monday",
-            time: "21:30",
-            duration: 30,
-            class_type: "Regular",
-            status: "Cancelled (RG)",
-        },
-        {
-            id: 10,
-            student_name: "Matson Chen",
-            teacher_id: "t1",
-            teacher_name: "John Smith",
-            day: "Tuesday",
-            time: "17:00",
-            duration: 30,
-            class_type: "Premium",
-            status: "Completed (PRM)",
-        },
-        {
-            id: 11,
-            student_name: "Amy Li",
-            teacher_id: "t2",
-            teacher_name: "Sarah Johnson",
-            day: "Tuesday",
-            time: "18:00",
-            duration: 30,
-            class_type: "Regular",
-            status: "FC not consumed (RG)",
-        },
-        {
-            id: 12,
-            student_name: "Eric Z",
-            teacher_id: "t3",
-            teacher_name: "Michael Brown",
-            day: "Tuesday",
-            time: "18:30",
-            duration: 30,
-            class_type: "Premium",
-            status: "Completed (PRM)",
-        },
-        {
-            id: 13,
-            student_name: "Matson Chen",
-            teacher_id: "t1",
-            teacher_name: "John Smith",
-            day: "Wednesday",
-            time: "16:30",
-            duration: 30,
-            class_type: "Premium",
-            status: "Completed (PRM)",
-        },
-        {
-            id: 14,
-            student_name: "Jeffery",
-            teacher_id: "t2",
-            teacher_name: "Sarah Johnson",
-            day: "Friday",
-            time: "17:30",
-            duration: 30,
-            class_type: "Regular",
-            status: "FC consumed (RG)",
-        },
-        {
-            id: 15,
-            student_name: "John",
-            teacher_id: "t3",
-            teacher_name: "Michael Brown",
-            day: "Friday",
-            time: "20:00",
-            duration: 30,
-            class_type: "Regular",
-            status: "Completed (RG)",
-        },
-        {
-            id: 16,
-            student_name: "Group: English Conversation",
-            teacher_id: "t1",
-            teacher_name: "John Smith",
-            day: "Wednesday",
-            time: "19:00",
-            duration: 60,
-            class_type: "Group",
-            status: "Completed (RG)",
-        },
-        {
-            id: 17,
-            student_name: "Group: Business English",
-            teacher_id: "t2",
-            teacher_name: "Sarah Johnson",
-            day: "Thursday",
-            time: "18:00",
-            duration: 60,
-            class_type: "Group",
-            status: "FC consumed (RG)",
-        },
-    ]);
+    // Fetch teachers from API
+    const fetchTeachers = async () => {
+        setLoadingTeachers(true);
+        try {
+            const response = await axios.get('/api/admin/active-teachers');
+            setTeachers(response.data);
+        } catch (error) {
+            console.error('Error fetching teachers:', error);
+            setError('Failed to load teachers');
+        } finally {
+            setLoadingTeachers(false);
+        }
+    };
+
+    // Fetch teachers on component mount
+    useEffect(() => {
+        fetchTeachers();
+    }, []);
+
+    // Fetch classes on component mount and when filters change
+    useEffect(() => {
+        fetchClasses();
+    }, [currentWeek, teacherFilter]);
+
+    // Fetch classes from API
+    const fetchClasses = async () => {
+        setLoadingClasses(true);
+        try {
+            const params = new URLSearchParams();
+            
+            // Add teacher filter if selected
+            if (teacherFilter !== 'all') {
+                params.append('teacher_id', teacherFilter);
+            }
+            
+            // Add date range for current week
+            const startOfWeek = new Date(currentWeek);
+            const day = startOfWeek.getDay();
+            startOfWeek.setDate(startOfWeek.getDate() - day + 1); // Start from Monday
+            
+            const endOfWeek = new Date(startOfWeek);
+            endOfWeek.setDate(startOfWeek.getDate() + 6); // End on Sunday
+            
+            params.append('start_date', startOfWeek.toISOString().split('T')[0]);
+            params.append('end_date', endOfWeek.toISOString().split('T')[0]);
+            
+            const response = await axios.get(`/api/admin/calendar-classes?${params}`);
+            const classesData = response.data || [];
+            console.log('API response (admin/calendar-classes):', classesData);
+            
+            // PRE-PROCESS the student names in group classes before setting state
+            const processedClasses = [];
+            
+            classesData.forEach(classItem => {
+                // Special handling for group classes with multiple student names
+                if (classItem.class_type === 'Group' && classItem.student_name) {
+                    console.log('Pre-processing group class:', classItem.student_name);
+                    
+                    // Handle "kai, mei..." format - need to extract individual names
+                    if (classItem.student_name.includes(',')) {
+                        console.log('Found group class with multiple students:', classItem.student_name);
+                        
+                        // Remove the ellipsis if present
+                        const cleanedName = classItem.student_name.replace('...', '');
+                        
+                        // Split by comma and create individual class items
+                        const studentNames = cleanedName.split(',')
+                            .map(name => name.trim())
+                            .filter(name => name.length > 0);
+                            
+                        console.log('Split into individual students:', studentNames);
+                        
+                        // Create a separate class item for each student
+                        studentNames.forEach(studentName => {
+                            const newClassItem = {...classItem};
+                            newClassItem.student_name = studentName;
+                            newClassItem.original_student_list = classItem.student_name;
+                            newClassItem.isIndividualGroupStudent = true;
+                            processedClasses.push(newClassItem);
+                        });
+                    } else {
+                        // No commas - just a single student in a group class
+                        processedClasses.push(classItem);
+                    }
+                } else {
+                    // Not a group class - add as is
+                    processedClasses.push(classItem);
+                }
+            });
+            
+            console.log('Processed classes for individual display:', processedClasses.length);
+            
+            // Special handling for Sunday cards - set their status to "Valid for cancellation"
+            processedClasses.forEach(cls => {
+                // Make sure all Sunday classes have "Valid for cancellation" status
+                if (cls.day === 'Sunday') {
+                    cls.status = 'Valid for cancellation';
+                    console.log('Set Sunday class to Valid for cancellation:', cls.student_name);
+                }
+            });
+            
+            setClasses(processedClasses);
+        } catch (error) {
+            console.error('Error fetching classes:', error);
+            setError('Failed to load classes');
+        } finally {
+            setLoadingClasses(false);
+        }
+    };
 
     // Get days of the current week
     const getDaysOfWeek = () => {
@@ -287,7 +220,8 @@ export default function AdminDailyCalendar() {
         setCurrentWeek(nextWeek);
     };
 
-    const getClassesForSlot = (day, time24) => {
+    // Make getClassesForSlot always use the latest classes state
+    const getClassesForSlot = React.useCallback((day, time24) => {
         const dayName = [
             "Sunday",
             "Monday",
@@ -300,7 +234,7 @@ export default function AdminDailyCalendar() {
         return classes.filter(
             (cls) => cls.day === dayName && cls.time === time24
         );
-    };
+    }, [classes]);
 
     const formatDate = (date) => {
         return `${date.getMonth() + 1}.${date.getDate()}`;
@@ -308,12 +242,34 @@ export default function AdminDailyCalendar() {
 
     // Handle opening the event details modal
     const handleEventClick = (event) => {
-        setSelectedEvent({
+        // Create a clean copy of the event for the modal
+        const eventForModal = {
             ...event,
-            // Ensure date and endDate are Date objects
             date: event.date ? new Date(event.date) : new Date(),
             endDate: event.endDate ? new Date(event.endDate) : new Date(),
-        });
+        };
+        
+        // If this is a group class, provide additional information
+        if (event.class_type === 'Group') {
+            // Find other students in this group class
+            const otherStudentsInGroup = classes
+                .filter(ev =>
+                    ev.class_type === 'Group' &&
+                    ev.time === event.time &&
+                    ev.teacher_id === event.teacher_id &&
+                    ev.id !== event.id &&
+                    (ev.date instanceof Date ? ev.date.toDateString() : new Date(ev.date).toDateString()) === 
+                    (event.date instanceof Date ? event.date.toDateString() : new Date(event.date).toDateString())
+                )
+                .map(ev => ev.student_name);
+                
+            // Add group class information to the modal data
+            eventForModal.isGroupClassStudent = true;
+            eventForModal.otherStudentsInGroup = otherStudentsInGroup;
+            eventForModal.groupNote = `This student is part of a group class with: ${[event.student_name, ...otherStudentsInGroup].join(', ')}`;
+        }
+        
+        setSelectedEvent(eventForModal);
         setShowDetailsModal(true);
     };
 
@@ -333,12 +289,123 @@ export default function AdminDailyCalendar() {
         }
     };
 
-    // Handle join class
-    const handleJoinClass = (eventId) => {
-        // In a real app, this would open the class in a new tab or redirect to the class page
-        console.log("Joining class:", eventId);
-        // For now, just show an alert
-        alert(`Joining class ${eventId}`);
+    // Handle status change in the modal
+    const handleStatusChange = (eventId, newStatus) => {
+        // Only update the selected event status in the modal, not the main classes array
+        if (selectedEvent && selectedEvent.id === eventId) {
+            setSelectedEvent(prev => ({
+                ...prev,
+                status: newStatus
+            }));
+        }
+        // Do NOT update setClasses here!
+    };
+
+    // Handle class update (Update button functionality)
+    const handleUpdateClass = async (eventId) => {
+        try {
+            setLoading(true);
+            const eventToUpdate = selectedEvent;
+            if (!eventToUpdate) {
+                console.error('No event selected for update');
+                return;
+            }
+            
+            // Single class update for the selected student
+            const updateData = {
+                teacher_id: eventToUpdate.teacher_id,
+                student_name: eventToUpdate.student_name,
+                class_type: eventToUpdate.class_type,
+                schedule: eventToUpdate.date ? eventToUpdate.date.toISOString().split('T')[0] : '',
+                time: eventToUpdate.time,
+                status: eventToUpdate.status
+            };
+            
+            // If user wants to update all students in the group (optional future feature)
+            const updateAllInGroup = eventToUpdate.class_type === 'Group' && 
+                                     eventToUpdate.isGroupClassStudent && 
+                                     eventToUpdate.updateAllInGroup;
+            
+            if (updateAllInGroup) {
+                // Find all students in this group class
+                const groupStudents = classes.filter(ev =>
+                    ev.class_type === 'Group' &&
+                    ev.time === eventToUpdate.time &&
+                    ev.teacher_id === eventToUpdate.teacher_id &&
+                    (ev.date instanceof Date ? ev.date.toDateString() : new Date(ev.date).toDateString()) === 
+                    (eventToUpdate.date instanceof Date ? eventToUpdate.date.toDateString() : new Date(eventToUpdate.date).toDateString())
+                );
+                
+                // Update all students in the group
+                await Promise.all(groupStudents.map(async (cls) => {
+                    const studentUpdateData = {
+                        ...updateData,
+                        student_name: cls.student_name
+                    };
+                    await axios.put(`/api/admin/classes/${cls.id}`, studentUpdateData);
+                }));
+                
+                // Update local state
+                setClasses(prevClasses => prevClasses.map(cls => {
+                    if (groupStudents.some(g => g.id === cls.id)) {
+                        return { ...cls, status: eventToUpdate.status };
+                    }
+                    return cls;
+                }));
+                
+                setShowDetailsModal(false);
+                toast.success('All students in group class updated successfully!', {
+                  position: 'top-right',
+                  autoClose: 2000,
+                  hideProgressBar: false,
+                  closeOnClick: true,
+                  pauseOnHover: true,
+                  draggable: true,
+                });
+            } else {
+                // Update just the selected student
+                const response = await axios.put(`/api/admin/classes/${eventId}`, updateData);
+                if (response.data && response.data.class) {
+                    setClasses(prevClasses =>
+                        prevClasses.map(cls =>
+                            cls.id === eventId ? { ...cls, ...response.data.class } : cls
+                        )
+                    );
+                    setShowDetailsModal(false);
+                    toast.success('Class updated successfully!', {
+                      position: 'top-right',
+                      autoClose: 2000,
+                      hideProgressBar: false,
+                      closeOnClick: true,
+                      pauseOnHover: true,
+                      draggable: true,
+                    });
+                }
+            }
+        } catch (error) {
+            console.error('Error updating class:', error);
+            if (error.response && error.response.data && error.response.data.message) {
+                toast.error(`Error updating class: ${error.response.data.message}`, {
+                  position: 'top-right',
+                  autoClose: 3000,
+                  hideProgressBar: false,
+                  closeOnClick: true,
+                  pauseOnHover: true,
+                  draggable: true,
+                });
+            } else {
+                toast.error('Failed to update class. Please try again.', {
+                  position: 'top-right',
+                  autoClose: 3000,
+                  hideProgressBar: false,
+                  closeOnClick: true,
+                  pauseOnHover: true,
+                  draggable: true,
+                });
+            }
+        } finally {
+            setLoading(false);
+        }
     };
 
     const getDayName = (date) => {
@@ -386,9 +453,11 @@ export default function AdminDailyCalendar() {
             );
         }
 
-        // Then apply teacher filter
+        // Then apply teacher filter (server-side filtering is preferred, but this provides client-side backup)
         if (teacherFilter !== "all") {
-            result = result.filter((cls) => cls.teacher_id === teacherFilter);
+            result = result.filter((cls) => 
+                String(cls.teacher_id) === String(teacherFilter)
+            );
         }
 
         // Finally apply status filter
@@ -419,7 +488,8 @@ export default function AdminDailyCalendar() {
         return map;
     }, [filteredClasses]);
 
-    const getFilteredClassesForSlot = (day, time24) => {
+    // Make getFilteredClassesForSlot always use the latest filteredClassesMap
+    const getFilteredClassesForSlot = React.useCallback((day, time24) => {
         const dayName = [
             "Sunday",
             "Monday",
@@ -430,31 +500,197 @@ export default function AdminDailyCalendar() {
             "Saturday",
         ][day.getDay()];
         return filteredClassesMap.get(`${dayName}-${time24}`) || [];
-    };
+    }, [filteredClassesMap]);
 
     // Generate unique statuses for filter dropdown with proper formatting
-    const statuses = useMemo(() => {
-        const statusSet = new Set();
-        classes.forEach((cls) => {
-            // Clean up status by removing (RG) suffix for display
-            const cleanStatus = cls.status.replace(/\s*\(RG\)$/, "").trim();
-            statusSet.add(cleanStatus);
-        });
+    // const statuses = useMemo(() => {
+    //     const statusSet = new Set();
+    //     classes.forEach((cls) => {
+    //         // Clean up status by removing (RG) suffix for display
+    //         const cleanStatus = cls.status.replace(/\s*\(RG\)$/, "").trim();
+    //         statusSet.add(cleanStatus);
+    //     });
 
-        // Convert to array and sort
-        const sortedStatuses = Array.from(statusSet).sort();
+    //     // Convert to array and sort
+    //     const sortedStatuses = Array.from(statusSet).sort();
 
-        // Move 'Completed' to the top if it exists
-        const completedIndex = sortedStatuses.findIndex((s) =>
-            s.startsWith("Completed")
-        );
-        if (completedIndex > 0) {
-            const [completed] = sortedStatuses.splice(completedIndex, 1);
-            sortedStatuses.unshift(completed);
+    //     // Move 'Completed' to the top if it exists
+    //     const completedIndex = sortedStatuses.findIndex((s) =>
+    //         s.startsWith("Completed")
+    //     );
+    //     if (completedIndex > 0) {
+    //         const [completed] = sortedStatuses.splice(completedIndex, 1);
+    //         sortedStatuses.unshift(completed);
+    //     }
+
+    //     return sortedStatuses;
+    // }, [classes]);
+
+    // Helper function to get event styles (matching the screenshot exactly)
+    const getEventStyles = (classType, status = 'scheduled') => {
+        // Class type styling
+        let typeIcon = null;
+        
+        // Status styling (background color matching the exact screenshot)
+        let bg = '';
+        let text = '';
+        let secondaryText = '';
+        let statusIcon = null;
+        let cssClass = '';
+        
+        switch (status) {
+            case 'Valid for cancellation':
+            case 'Valid for Cancellation':
+                bg = 'bg-[#94a3b8]'; // Gray color from screenshot
+                text = 'text-white';
+                secondaryText = 'text-white';
+                statusIcon = <div className="flex items-center w-full">
+                    <span className="text-xs font-semibold">V</span>
+                    <span className="ml-1 text-xs">{classType === "Premium" ? "P " : classType === "Group" ? "G " : "R "}</span>
+                </div>;
+                cssClass = 'bg-[#94a3b8] text-white';
+                break;
+            case 'FC not consumed':
+            case 'Free Class':
+                bg = 'bg-[#fcd34d]'; // Yellow color from screenshot
+                text = 'text-white';
+                secondaryText = 'text-white';
+                statusIcon = <div className="flex items-center w-full">
+                    <span className="text-xs font-semibold">FC</span>
+                    <span className="ml-1 text-xs"></span>
+                </div>;
+                cssClass = 'bg-[#fcd34d] text-white';
+                break;
+            case 'Completed':
+                bg = 'bg-[#4ade80]'; // Green color from screenshot
+                text = 'text-white';
+                secondaryText = 'text-white';
+                statusIcon = <div className="flex items-center w-full">
+                    <span className="text-xs font-semibold">C</span>
+                    <span className="ml-1 text-xs"></span>
+                </div>;
+                cssClass = 'bg-[#4ade80] text-white';
+                break;
+            case 'Absent w/ntc counted':
+                bg = 'bg-[#60a5fa]'; // Blue color from screenshot
+                text = 'text-white';
+                secondaryText = 'text-white';
+                statusIcon = <div className="flex items-center w-full">
+                    <span className="text-xs font-semibold">A</span>
+                    <span className="ml-1 text-xs"></span>
+                </div>;
+                cssClass = 'bg-[#60a5fa] text-white';
+                break;
+            case 'Cancelled':
+                bg = 'bg-[#c084fc]'; // Purple color from screenshot
+                text = 'text-white';
+                secondaryText = 'text-white';
+                statusIcon = <div className="flex items-center w-full">
+                    <span className="text-xs font-semibold">CL</span>
+                    <span className="ml-1 text-xs"></span>
+                </div>;
+                cssClass = 'bg-[#c084fc] text-white';
+                break;
+            case 'Absent w/ntc-not counted':
+                bg = 'bg-[#64748b]'; // Dark Gray color from screenshot
+                text = 'text-white';
+                secondaryText = 'text-white';
+                statusIcon = <div className="flex items-center w-full">
+                    <span className="text-xs font-semibold">ANC</span>
+                    <span className="ml-1 text-xs"></span>
+                </div>;
+                cssClass = 'bg-[#64748b] text-white';
+                break;
+            case 'FC consumed':
+                bg = 'bg-[#f472b6]'; // Pink color from screenshot
+                text = 'text-white';
+                secondaryText = 'text-white';
+                statusIcon = <div className="flex items-center w-full">
+                    <span className="text-xs font-semibold">FCC</span>
+                    <span className="ml-1 text-xs"></span>
+                </div>;
+                cssClass = 'bg-[#f472b6] text-white';
+                break;
+            case 'Absent Without Notice':
+                bg = 'bg-[#ef4444]'; // Red color from screenshot
+                text = 'text-white';
+                secondaryText = 'text-white';
+                statusIcon = <div className="flex items-center w-full">
+                    <span className="text-xs font-semibold">AWN</span>
+                    <span className="ml-1 text-xs"></span>
+                </div>;
+                cssClass = 'bg-[#ef4444] text-white';
+                break;
+            case 'scheduled':
+            default:
+                // Based on class type - using exact colors from screenshot
+                if (classType === "Premium") {
+                    bg = 'bg-[#f472b6]'; // Pink from screenshot
+                    text = 'text-white';
+                    secondaryText = 'text-white';
+                    statusIcon = <div className="flex items-center w-full">
+                        <span className="text-xs font-semibold">P</span>
+                        <span className="ml-1 text-xs"></span>
+                    </div>;
+                    cssClass = 'bg-[#f472b6] text-white';
+                } else if (classType === "Group") {
+                    bg = 'bg-[#4ade80]'; // Green from screenshot
+                    text = 'text-white';
+                    secondaryText = 'text-white';
+                    statusIcon = <div className="flex items-center w-full">
+                        <span className="text-xs font-semibold">G</span>
+                        <span className="ml-1 text-xs"></span>
+                    </div>;
+                    cssClass = 'bg-[#4ade80] text-white';
+                } else {
+                    bg = 'bg-[#c084fc]'; // Purple from screenshot
+                    text = 'text-white';
+                    secondaryText = 'text-white';
+                    statusIcon = <div className="flex items-center w-full">
+                        <span className="text-xs font-semibold">R</span>
+                        <span className="ml-1 text-xs"></span>
+                    </div>;
+                    cssClass = 'bg-[#c084fc] text-white';
+                }
+                break;
         }
+        
+        return {
+            bg,
+            text,
+            secondaryText,
+            border,
+            typeIcon,
+            statusIcon,
+            cssClass
+        };
+    };
 
-        return sortedStatuses;
-    }, [classes]);
+    // Helper to get all stats for a student from allClasses (matching Students.jsx)
+    function getStudentStatsFromClasses(student, allClasses) {
+        const studentClasses = allClasses.filter(cls => cls.student_name === student.name);
+        const completed = studentClasses.filter(cls => cls.status === "Completed").length;
+        const absentWntcCounted = studentClasses.filter(cls => cls.status === "Absent w/ntc counted").length;
+        const cancelled = studentClasses.filter(cls => cls.status === "Cancelled").length;
+        const absentWntcNotCounted = studentClasses.filter(cls => cls.status === "Absent w/ntc-not counted").length;
+        const fcConsumed = studentClasses.filter(cls => cls.status === "FC consumed").length;
+        const purchased = (student.purchased_class_regular || 0)
+            + (student.purchased_class_premium || 0)
+            + (student.purchased_class_group || 0);
+        // Free classes: +1 for each Cancelled or Absent w/ntc-not counted, -1 for each FC consumed
+        const freeClasses = Math.max(0, cancelled + absentWntcNotCounted - fcConsumed);
+        // Class left: purchased - completed - absentWntcCounted - fcConsumed
+        const classLeft = Math.max(0, purchased - completed - absentWntcCounted - fcConsumed);
+        // Free class consumed: count of FC consumed
+        const freeClassConsumed = fcConsumed;
+        return {
+            completed,
+            absentWntcCounted,
+            freeClasses,
+            classLeft,
+            freeClassConsumed,
+        };
+    }
 
     return (
         <AdminLayout
@@ -467,7 +703,7 @@ export default function AdminDailyCalendar() {
         >
             <Head title="Daily Calendar" />
 
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+            <div className="max-w-8xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
                 <Legend />
                 {/* Search and Filter Container */}
                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-6 relative z-10">
@@ -514,12 +750,12 @@ export default function AdminDailyCalendar() {
                                             <span className="truncate">
                                                 {teachers.find(
                                                     (t) =>
-                                                        t.id === teacherFilter
+                                                        String(t.id) === teacherFilter
                                                 )?.name || "Teacher"}
                                             </span>
                                         ) : (
                                             <span className="text-gray-500">
-                                                All Teachers
+                                                {loadingTeachers ? "Loading teachers..." : "All Teachers"}
                                             </span>
                                         )}
                                     </div>
@@ -551,29 +787,36 @@ export default function AdminDailyCalendar() {
                                                     <Users className="h-4 w-4 mr-2" />
                                                     All Teachers
                                                 </button>
-                                                {teachers.map((teacher) => (
-                                                    <button
-                                                        key={teacher.id}
-                                                        type="button"
-                                                        className={`w-full rounded-md px-3 py-2 text-left text-sm transition-all duration-200 flex items-center ${
-                                                            teacherFilter ===
-                                                            teacher.id
-                                                                ? "bg-navy-600 text-white"
-                                                                : "hover:bg-gray-100 text-gray-700"
-                                                        }`}
-                                                        onClick={() => {
-                                                            setTeacherFilter(
-                                                                teacher.id
-                                                            );
-                                                            setFilterOpen(
-                                                                false
-                                                            );
-                                                        }}
-                                                    >
-                                                        <User className="h-4 w-4 mr-2" />
-                                                        {teacher.name}
-                                                    </button>
-                                                ))}
+                                                {loadingTeachers ? (
+                                                    <div className="px-3 py-2 text-sm text-gray-500 flex items-center">
+                                                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-500 mr-2"></div>
+                                                        Loading teachers...
+                                                    </div>
+                                                ) : (
+                                                    teachers.map((teacher) => (
+                                                        <button
+                                                            key={teacher.id}
+                                                            type="button"
+                                                            className={`w-full rounded-md px-3 py-2 text-left text-sm transition-all duration-200 flex items-center ${
+                                                                teacherFilter ===
+                                                                String(teacher.id)
+                                                                    ? "bg-navy-600 text-white"
+                                                                    : "hover:bg-gray-100 text-gray-700"
+                                                            }`}
+                                                            onClick={() => {
+                                                                setTeacherFilter(
+                                                                    String(teacher.id)
+                                                                );
+                                                                setFilterOpen(
+                                                                    false
+                                                                );
+                                                            }}
+                                                        >
+                                                            <User className="h-4 w-4 mr-2" />
+                                                            {teacher.name}
+                                                        </button>
+                                                    ))
+                                                )}
                                             </div>
                                         </div>
                                     </div>
@@ -636,10 +879,50 @@ export default function AdminDailyCalendar() {
                                                         setFilterOpen(false);
                                                     }}
                                                 >
-                                                    <ListFilter className="h-4 w-4 mr-2" />
                                                     All Statuses
                                                 </button>
-                                                {statuses.map((status) => (
+                                                
+                                                {statuses.map((status) => {
+                                                    // Get status color based on status name (matching legend)
+                                                    let statusColor = '';
+                                                    let borderColor = '';
+                                                    
+                                                    switch (status) {
+                                                        case 'Valid for cancellation':
+                                                            statusColor = 'bg-gray-400';
+                                                            borderColor = 'border-gray-300';
+                                                            break;
+                                                        case 'FC not consumed':
+                                                            statusColor = 'bg-yellow-400';
+                                                            borderColor = 'border-yellow-500';
+                                                            break;
+                                                        case 'Completed':
+                                                            statusColor = 'bg-green-400';
+                                                            borderColor = 'border-green-500';
+                                                            break;
+                                                        case 'Absent w/ntc counted':
+                                                            statusColor = 'bg-blue-400';
+                                                            borderColor = 'border-blue-500';
+                                                            break;
+                                                        case 'Cancelled':
+                                                            statusColor = 'bg-purple-400';
+                                                            borderColor = 'border-purple-500';
+                                                            break;
+                                                        case 'Absent w/ntc-not counted':
+                                                            statusColor = 'bg-gray-600';
+                                                            borderColor = 'border-gray-500';
+                                                            break;
+                                                        case 'FC consumed':
+                                                            statusColor = 'bg-pink-400';
+                                                            borderColor = 'border-pink-400';
+                                                            break;
+                                                        default:
+                                                            statusColor = 'bg-[#4B5563]';
+                                                            borderColor = 'border-[#4B5563]';
+                                                            break;
+                                                    }
+                                                    
+                                                    return (
                                                     <button
                                                         key={status}
                                                         type="button"
@@ -650,37 +933,15 @@ export default function AdminDailyCalendar() {
                                                                 : "hover:bg-gray-100 text-gray-700"
                                                         }`}
                                                         onClick={() => {
-                                                            setStatusFilter(
-                                                                status === "All"
-                                                                    ? "all"
-                                                                    : status
-                                                            );
-                                                            setFilterOpen(
-                                                                false
-                                                            );
+                                                            setStatusFilter(status);
+                                                            setFilterOpen(false);
                                                         }}
                                                     >
-                                                        {status ===
-                                                            "Completed" ||
-                                                        status ===
-                                                            "Completed (RG)" ||
-                                                        status ===
-                                                            "Completed (PRM)" ? (
-                                                            <CheckCircle2 className="h-4 w-4 mr-2 text-green-500" />
-                                                        ) : status.includes(
-                                                              "Cancelled"
-                                                          ) ? (
-                                                            <XCircle className="h-4 w-4 mr-2 text-red-500" />
-                                                        ) : status.includes(
-                                                              "Absent"
-                                                          ) ? (
-                                                            <AlertCircle className="h-4 w-4 mr-2 text-amber-500" />
-                                                        ) : (
-                                                            <Calendar className="h-4 w-4 mr-2 text-blue-500" />
-                                                        )}
+                                                        <span className={`w-4 h-4 ${statusColor} ${borderColor} border flex-shrink-0 rounded-sm mr-3`}></span>
                                                         {status}
                                                     </button>
-                                                ))}
+                                                    );
+                                                })}
                                             </div>
                                         </div>
                                     </div>
@@ -719,11 +980,11 @@ export default function AdminDailyCalendar() {
 
                 {/* Calendar Grid */}
                 <div className="bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden">
-                    {loading ? (
+                    {loading || loadingClasses ? (
                         <div className="p-6 sm:p-8 text-center">
                             <div className="inline-block h-7 sm:h-8 w-7 sm:w-8 animate-spin rounded-full border-4 border-solid border-blue-600 border-r-transparent align-[-0.125em] motion-reduce:animate-[spin_1.5s_linear_infinite]"></div>
                             <p className="mt-2 text-sm sm:text-base text-gray-600">
-                                Loading classes...
+                                {loadingClasses ? "Loading classes..." : "Loading..."}
                             </p>
                         </div>
                     ) : error ? (
@@ -796,6 +1057,18 @@ export default function AdminDailyCalendar() {
                                                         day,
                                                         time.time24
                                                     );
+                                                
+                                                // Uncomment for debugging if needed
+                                                /*if (filteredClassesInSlot.length > 0) {
+                                                    console.log(`Classes for ${getDayName(day)}, ${time.display}:`, 
+                                                        filteredClassesInSlot.map(c => ({
+                                                            id: c.id,
+                                                            name: c.student_name,
+                                                            type: c.class_type,
+                                                            status: c.status
+                                                        }))
+                                                    );
+                                                }*/
                                                 const hasClass =
                                                     filteredClassesInSlot.length >
                                                     0;
@@ -809,81 +1082,67 @@ export default function AdminDailyCalendar() {
                                                                 : "bg-white"
                                                         }`}
                                                     >
-                                                        {filteredClassesInSlot.map(
-                                                            (cls) => (
+                                                        {/* Display all classes as individual cards, including group classes */}
+                                                        {filteredClassesInSlot.map(cls => {
+                                                            // Check if this is a Sunday card
+                                                            const isSunday = getDayName(day) === 'Sunday';
+                                                            
+                                                            // Apply styling directly based on status or class type
+                                                            // This matches exactly with Legend.jsx
+                                                            let cardStyle = '';
+                                                            let statusIcon = null;
+                                                            
+                                                            // First check if class has status - priority over class type
+                                                            // Set the left border color based on class type (exactly matching Legend.jsx)
+                                                            let leftBorderColor = '';
+                                                            if (cls.class_type === 'Premium') {
+                                                                leftBorderColor = 'border-l-orange-400'; // Orange for premium from Legend.jsx
+                                                            } 
+                                                            else if (cls.class_type === 'Group') {
+                                                                leftBorderColor = 'border-l-[#4A9782]'; // Custom green for group from Legend.jsx
+                                                            } 
+                                                            else {
+                                                                leftBorderColor = 'border-l-navy-500'; // Navy for regular from Legend.jsx
+                                                            }
+                                                            
+                                                            // Set card background color based on class status (exactly matching Legend.jsx)
+                                                            if (isSunday || cls.status === 'Valid for cancellation' || cls.status === 'Valid for Cancellation') {
+                                                                cardStyle = 'bg-gray-400 text-gray-700'; // Very light gray to match screenshot
+                                                            } else if (cls.status === 'FC not consumed' || cls.status === 'Free Class') {
+                                                                cardStyle = 'bg-yellow-400 text-gray-700';
+                                                            } else if (cls.status === 'Completed') {
+                                                                cardStyle = 'bg-green-400 text-gray-700';
+                                                            } else if (cls.status === 'Absent w/ntc counted') {
+                                                                cardStyle = 'bg-blue-400 text-gray-700';
+                                                            } else if (cls.status === 'Cancelled') {
+                                                                cardStyle = 'bg-purple-400 text-gray-700';
+                                                            } else if (cls.status === 'Absent w/ntc-not counted') {
+                                                                cardStyle = 'bg-gray-600 text-white';
+                                                            } else if (cls.status === 'FC consumed') {
+                                                                cardStyle = 'bg-pink-400 text-gray-700';
+                                                            } else if (cls.status === 'Absent Without Notice') {
+                                                                cardStyle = 'bg-red-400 text-gray-700';
+                                                            } else {
+                                                                // Default (scheduled) - gray background
+                                                                cardStyle = 'bg-gray-500 text-white';
+                                                            }
+                                                            
+                                                            const [bgClass, textClass, borderClass] = cardStyle.split(' ');
+                                                            
+                                                            return (
                                                                 <div
                                                                     key={cls.id}
-                                                                    onClick={() =>
-                                                                        handleEventClick(
-                                                                            cls
-                                                                        )
-                                                                    }
-                                                                    className={`p-1.5 rounded-md text-xs shadow-sm mb-1 last:mb-0 cursor-pointer transition-all duration-200 hover:shadow-md ${
-                                                                        // Border color based on class type
-                                                                        cls.class_type ===
-                                                                        "Premium"
-                                                                            ? "border-l-4 border-amber-500 "
-                                                                            : cls.class_type ===
-                                                                              "Group"
-                                                                            ? "border-l-4 border-orange-500 "
-                                                                            : "border-l-4 border-navy-500 "
-                                                                    }${
-                                                                        // Background color based on status
-                                                                        cls.status ===
-                                                                        "FC not consumed (RG)"
-                                                                            ? "bg-purple-100 hover:bg-purple-200 text-purple-900"
-                                                                            : cls.status ===
-                                                                              "FC consumed (RG)"
-                                                                            ? "bg-purple-200 hover:bg-purple-300 text-purple-900"
-                                                                            : cls.status ===
-                                                                              "Completed (RG)"
-                                                                            ? "bg-green-100 hover:bg-green-200 text-green-900"
-                                                                            : cls.status ===
-                                                                              "Completed (PRM)"
-                                                                            ? "bg-blue-100 hover:bg-blue-200 text-blue-900"
-                                                                            : cls.status ===
-                                                                              "Absent w/ntc counted (RG)"
-                                                                            ? "bg-yellow-100 hover:bg-yellow-200 text-yellow-900"
-                                                                            : cls.status ===
-                                                                              "Absent w/o ntc counted (RG)"
-                                                                            ? "bg-amber-100 hover:bg-amber-200 text-amber-900"
-                                                                            : cls.status ===
-                                                                              "Absent w/ntc-not counted (RG)"
-                                                                            ? "bg-orange-100 hover:bg-orange-200 text-orange-900"
-                                                                            : cls.status ===
-                                                                              "Cancelled (RG)"
-                                                                            ? "bg-red-100 hover:bg-red-200 text-red-900"
-                                                                            : "bg-gray-100 hover:bg-gray-200 text-gray-900"
-                                                                    }`}
+                                                                    onClick={() => handleEventClick(cls)}
+                                                                    className={`border-l-4 ${leftBorderColor} py-1.5 px-2 rounded-md text-xs shadow mb-1 last:mb-0 cursor-pointer transition-all duration-200 hover:shadow-md ${bgClass} ${textClass}`}
                                                                 >
-                                                                    <div>
-                                                                        <div className="flex items-center">
-                                                                            {cls.class_type ===
-                                                                            "Premium" ? (
-                                                                                <Gem className="h-3 w-3 text-amber-600 mr-1" />
-                                                                            ) : cls.class_type ===
-                                                                              "Group" ? (
-                                                                                <Users className="h-3 w-3 text-orange-600 mr-1" />
-                                                                            ) : (
-                                                                                <User className="h-3 w-3 text-navy-600 mr-1" />
-                                                                            )}
-                                                                            <span className="font-medium">
-                                                                                {
-                                                                                    cls.student_name
-                                                                                }
-                                                                            </span>
-                                                                        </div>
-                                                                        {cls.teacher_name && (
-                                                                            <div className="text-[10px] text-navy-500 mt-0.5 truncate">
-                                                                                {
-                                                                                    cls.teacher_name
-                                                                                }
-                                                                            </div>
-                                                                        )}
+                                                                    {/* Student name only with user icon */}
+                                                                    <div className="flex items-center">
+                                                                        <User className="h-3 w-3 mr-1.5" />
+                                                                        <span className="text-xs font-medium truncate">{cls.student_name}</span>
                                                                     </div>
                                                                 </div>
-                                                            )
-                                                        )}
+                                                            );
+                                                        })}
                                                     </td>
                                                 );
                                             })}
@@ -900,9 +1159,11 @@ export default function AdminDailyCalendar() {
                 isOpen={showDetailsModal}
                 onClose={() => setShowDetailsModal(false)}
                 event={selectedEvent}
+                onStatusChange={handleStatusChange}
                 onSaveNotes={handleSaveNotes}
-                onJoinClass={handleJoinClass}
+                onJoinClass={handleUpdateClass}
             />
+            <ToastContainer />
         </AdminLayout>
     );
 }

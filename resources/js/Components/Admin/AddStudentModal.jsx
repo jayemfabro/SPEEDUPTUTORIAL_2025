@@ -1,8 +1,14 @@
-import React from 'react';
-import { X } from 'lucide-react';
+import React, { useState } from 'react';
+import { X, ChevronDown, ChevronUp, User, Diamond, Users, Gem, Check } from 'lucide-react';
 import { Transition } from '@headlessui/react';
 
 const AddStudentModal = ({ isOpen, onClose, onSubmit, studentForm, onInputChange }) => {
+    // Remove class type dropdown logic
+    // Add handler for new purchased class fields
+    const handlePurchasedClassChange = (e) => {
+        const { name, value } = e.target;
+        onInputChange({ target: { name, value: value === "" ? 0 : parseInt(value, 10) } });
+    };
     return (
         <Transition show={isOpen} as={React.Fragment}>
             <div className="fixed inset-0 overflow-y-auto z-50">
@@ -62,7 +68,7 @@ const AddStudentModal = ({ isOpen, onClose, onSubmit, studentForm, onInputChange
                                             </div>
                                         </div>
 
-                                        <div className="sm:col-span-3">
+                                        <div className="sm:col-span-6">
                                             <label htmlFor="email" className="block text-sm font-medium text-gray-700">
                                                 Email
                                             </label>
@@ -79,98 +85,56 @@ const AddStudentModal = ({ isOpen, onClose, onSubmit, studentForm, onInputChange
                                             </div>
                                         </div>
 
-                                        <div className="sm:col-span-3">
-                                            <label htmlFor="phone" className="block text-sm font-medium text-gray-700">
-                                                Phone
-                                            </label>
-                                            <div className="mt-1">
-                                                <input
-                                                    type="tel"
-                                                    name="phone"
-                                                    id="phone"
-                                                    required
-                                                    value={studentForm.phone}
-                                                    onChange={onInputChange}
-                                                    className="shadow-sm focus:ring-orange-500 focus:border-orange-500 block w-full sm:text-sm border-gray-300 rounded-md"
-                                                />
-                                            </div>
-                                        </div>
-
-                                        <div className="sm:col-span-3">
-                                            <label htmlFor="grade" className="block text-sm font-medium text-gray-700">
-                                                Grade
-                                            </label>
-                                            <div className="mt-1">
-                                                <select
-                                                    name="grade"
-                                                    id="grade"
-                                                    required
-                                                    value={studentForm.grade}
-                                                    onChange={onInputChange}
-                                                    className="shadow-sm focus:ring-orange-500 focus:border-orange-500 block w-full sm:text-sm border-gray-300 rounded-md"
-                                                >
-                                                    <option value="">Select grade</option>
-                                                    <option value="7th Grade">7th Grade</option>
-                                                    <option value="8th Grade">8th Grade</option>
-                                                    <option value="9th Grade">9th Grade</option>
-                                                    <option value="10th Grade">10th Grade</option>
-                                                    <option value="11th Grade">11th Grade</option>
-                                                    <option value="12th Grade">12th Grade</option>
-                                                </select>
-                                            </div>
-                                        </div>
-
-                                        <div className="sm:col-span-3">
-                                            <label htmlFor="status" className="block text-sm font-medium text-gray-700">
-                                                Status
-                                            </label>
-                                            <div className="mt-1">
-                                                <select
-                                                    name="status"
-                                                    id="status"
-                                                    required
-                                                    value={studentForm.status}
-                                                    onChange={onInputChange}
-                                                    className="shadow-sm focus:ring-orange-500 focus:border-orange-500 block w-full sm:text-sm border-gray-300 rounded-md"
-                                                >
-                                                    <option value="Active">Active</option>
-                                                    <option value="Inactive">Inactive</option>
-                                                </select>
-                                            </div>
-                                        </div>
-
                                         <div className="sm:col-span-6">
-                                            <label htmlFor="courses" className="block text-sm font-medium text-gray-700">
-                                                Courses (comma separated)
+                                            <label className="block text-sm font-medium text-gray-700 mb-2">
+                                                Purchased Class
                                             </label>
-                                            <div className="mt-1">
+                                            <div className="space-y-2">
+                                                {/* Regular */}
+                                                <div className="flex items-center">
+                                                    <span className="bg-navy-500 text-white border border-blue-700 px-3 py-1 text-xs font-semibold rounded-full min-w-[80px] text-center mr-3">
+                                                        Regular
+                                                    </span>
+                                                    <input
+                                                        type="number"
+                                                        min="0"
+                                                        name="purchased_class_regular"
+                                                        value={studentForm.purchased_class_regular || ''}
+                                                        onChange={handlePurchasedClassChange}
+                                                        placeholder="0"
+                                                        className="shadow-sm focus:ring-orange-500 focus:border-orange-500 block w-32 sm:text-sm border-gray-300 rounded-md"
+                                                    />
+                                                </div>
+                                                {/* Premium */}
+                                                <div className="flex items-center">
+                                                    <span className="bg-orange-500 text-white border border-orange-600 px-3 py-1 text-xs font-semibold rounded-full min-w-[80px] text-center mr-3">
+                                                        Premium
+                                                    </span>
+                                                    <input
+                                                        type="number"
+                                                        min="0"
+                                                        name="purchased_class_premium"
+                                                        value={studentForm.purchased_class_premium || ''}
+                                                        onChange={handlePurchasedClassChange}
+                                                        placeholder="0"
+                                                        className="shadow-sm focus:ring-orange-500 focus:border-orange-500 block w-32 sm:text-sm border-gray-300 rounded-md"
+                                                    />
+                                                </div>
+                                                {/* Group */}
+                                                <div className="flex items-center">
+                                                    <span className="bg-orange-500 text-white border border-orange-600 px-3 py-1 text-xs font-semibold rounded-full min-w-[80px] text-center mr-3">
+                                                        Group
+                                                    </span>
                                                 <input
-                                                    type="text"
-                                                    name="courses"
-                                                    id="courses"
-                                                    required
-                                                    value={studentForm.courses}
-                                                    onChange={onInputChange}
-                                                    placeholder="e.g., Mathematics, Physics, English"
-                                                    className="shadow-sm focus:ring-orange-500 focus:border-orange-500 block w-full sm:text-sm border-gray-300 rounded-md"
+                                                        type="number"
+                                                        min="0"
+                                                        name="purchased_class_group"
+                                                        value={studentForm.purchased_class_group || ''}
+                                                        onChange={handlePurchasedClassChange}
+                                                        placeholder="0"
+                                                        className="shadow-sm focus:ring-orange-500 focus:border-orange-500 block w-32 sm:text-sm border-gray-300 rounded-md"
                                                 />
-                                            </div>
-                                        </div>
-
-                                        <div className="sm:col-span-6">
-                                            <label htmlFor="image" className="block text-sm font-medium text-gray-700">
-                                                Profile Image URL (optional)
-                                            </label>
-                                            <div className="mt-1">
-                                                <input
-                                                    type="text"
-                                                    name="image"
-                                                    id="image"
-                                                    value={studentForm.image || ''}
-                                                    onChange={onInputChange}
-                                                    placeholder="Leave blank for default image"
-                                                    className="shadow-sm focus:ring-orange-500 focus:border-orange-500 block w-full sm:text-sm border-gray-300 rounded-md"
-                                                />
+                                                </div>
                                             </div>
                                         </div>
                                     </div>

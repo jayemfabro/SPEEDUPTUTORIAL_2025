@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect } from "react";
-import { X, Camera, Eye, EyeOff } from "lucide-react";
+import { X, Camera, Eye, EyeOff, Calendar } from "lucide-react";
 import { Transition } from "@headlessui/react";
 
 const UpdateTeacherModal = ({
@@ -18,13 +18,14 @@ const UpdateTeacherModal = ({
     const [confirmPassword, setConfirmPassword] = useState('');
     const [passwordsMatch, setPasswordsMatch] = useState(true);
     const [isPasswordChanged, setIsPasswordChanged] = useState(false);
+    // No calendar state needed for direct date input
 
     useEffect(() => {
         // Set preview image when teacherForm changes
         if (teacherForm.image && !previewImage) {
             setPreviewImage(teacherForm.image);
         }
-    }, [teacherForm.image]);
+    }, [teacherForm.image, previewImage]);
 
     useEffect(() => {
         // Validate passwords match when either field changes
@@ -35,7 +36,7 @@ const UpdateTeacherModal = ({
         }
     }, [password, confirmPassword]);
 
-    const handleSubmit = (e) => {
+    const handleSubmit = async (e) => {
         e.preventDefault();
         
         // Only validate passwords if they are being changed
@@ -44,13 +45,12 @@ const UpdateTeacherModal = ({
             return;
         }
         
-        // Create form data with password only if it was changed
-        const formData = { ...teacherForm };
-        if (password) {
-            formData.password = password;
+        try {
+            // Call the onSubmit function passed from parent (Teachers.jsx)
+            await onSubmit();
+        } catch (error) {
+            console.error('Error in modal submission:', error);
         }
-        
-        onSubmit({ ...e, target: { ...e.target, value: formData } });
     };
 
     const handleImageChange = (e) => {
@@ -166,7 +166,7 @@ const UpdateTeacherModal = ({
                                             <div className="flex-1 space-y-4">
                                                 <div>
                                                     <label
-                                                        htmlFor="first_name"
+                                                        htmlFor="firstName"
                                                         className="block text-sm font-medium text-gray-700"
                                                     >
                                                         First Name *
@@ -174,11 +174,11 @@ const UpdateTeacherModal = ({
                                                     <div className="mt-1">
                                                         <input
                                                             type="text"
-                                                            name="first_name"
-                                                            id="first_name"
+                                                            name="firstName"
+                                                            id="firstName"
                                                             required
                                                             value={
-                                                                teacherForm.first_name ||
+                                                                teacherForm.firstName ||
                                                                 ""
                                                             }
                                                             onChange={onInputChange}
@@ -189,7 +189,7 @@ const UpdateTeacherModal = ({
 
                                                 <div>
                                                     <label
-                                                        htmlFor="middle_name"
+                                                        htmlFor="middleName"
                                                         className="block text-sm font-medium text-gray-700"
                                                     >
                                                         Middle Name
@@ -197,10 +197,10 @@ const UpdateTeacherModal = ({
                                                     <div className="mt-1">
                                                         <input
                                                             type="text"
-                                                            name="middle_name"
-                                                            id="middle_name"
+                                                            name="middleName"
+                                                            id="middleName"
                                                             value={
-                                                                teacherForm.middle_name ||
+                                                                teacherForm.middleName ||
                                                                 ""
                                                             }
                                                             onChange={onInputChange}
@@ -211,7 +211,7 @@ const UpdateTeacherModal = ({
 
                                                 <div>
                                                     <label
-                                                        htmlFor="last_name"
+                                                        htmlFor="lastName"
                                                         className="block text-sm font-medium text-gray-700"
                                                     >
                                                         Last Name *
@@ -219,11 +219,11 @@ const UpdateTeacherModal = ({
                                                     <div className="mt-1">
                                                         <input
                                                             type="text"
-                                                            name="last_name"
-                                                            id="last_name"
+                                                            name="lastName"
+                                                            id="lastName"
                                                             required
                                                             value={
-                                                                teacherForm.last_name ||
+                                                                teacherForm.lastName ||
                                                                 ""
                                                             }
                                                             onChange={onInputChange}
@@ -267,18 +267,20 @@ const UpdateTeacherModal = ({
                                                     Birthdate *
                                                 </label>
                                                 <div className="mt-1">
+                                                    {/* Simplified approach without any icon overlay */}
                                                     <input
                                                         type="date"
                                                         name="birthdate"
                                                         id="birthdate"
                                                         required
-                                                        value={
-                                                            teacherForm.birthdate ||
-                                                            ""
-                                                        }
+                                                        value={teacherForm.birthdate || ""}
                                                         onChange={onInputChange}
                                                         className="shadow-sm focus:ring-orange-500 focus:border-orange-500 block w-full sm:text-sm border-gray-300 rounded-md h-10 px-3"
+                                                        placeholder="mm/dd/yyyy"
                                                     />
+                                                    <p className="mt-1 text-xs text-gray-500">
+                                                        Please enter in MM/DD/YYYY format
+                                                    </p>
                                                 </div>
                                             </div>
 
@@ -341,8 +343,18 @@ const UpdateTeacherModal = ({
                                                         id="password"
                                                         value={password}
                                                         onChange={(e) => {
-                                                            setPassword(e.target.value);
-                                                            if (e.target.value) {
+                                                            const newPassword = e.target.value;
+                                                            setPassword(newPassword);
+                                                            
+                                                            // Update parent form state
+                                                            onInputChange({
+                                                                target: {
+                                                                    name: 'password',
+                                                                    value: newPassword
+                                                                }
+                                                            });
+                                                            
+                                                            if (newPassword) {
                                                                 setIsPasswordChanged(true);
                                                             } else {
                                                                 setIsPasswordChanged(false);

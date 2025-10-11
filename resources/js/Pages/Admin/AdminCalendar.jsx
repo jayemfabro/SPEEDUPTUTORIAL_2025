@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import AdminLayout from "@/Layouts/AdminLayout";
 import DetailsCalendarModal from "@/Components/Admin/DetailsCalendarModal";
+import MoreClassesModal from "@/Components/Teacher/MoreClassesModal";
 import {
     ChevronDown,
     ChevronUp,
@@ -19,6 +20,11 @@ import {
     Calendar,
 } from "lucide-react";
 import Legend from "@/Components/Admin/Legend";
+import { CLASS_TYPE_COLORS, CLASS_STATUS_COLORS } from "@/utils/colorMapping";
+import axios from "axios";
+import refreshEventManager from "@/utils/refreshEvents";
+import { toast, ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 
 
 export default function AdminCalendar() {
@@ -28,6 +34,10 @@ export default function AdminCalendar() {
     const [filteredEvents, setFilteredEvents] = useState([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
+    const [loadingClasses, setLoadingClasses] = useState(false);
+    const [renderKey, setRenderKey] = useState(0); // Force re-render key
+    const [forceUpdateTimestamp, setForceUpdateTimestamp] = useState(Date.now());
+    const [calendarKey, setCalendarKey] = useState(0); // Calendar component key
 
     // Filter states
     const [filterOpen, setFilterOpen] = useState(false);
@@ -39,11 +49,20 @@ export default function AdminCalendar() {
     const [showDetailsModal, setShowDetailsModal] = useState(false);
     const [selectedEvent, setSelectedEvent] = useState(null);
     const [isLegendExpanded, setIsLegendExpanded] = useState(false);
+    const [updateSuccess, setUpdateSuccess] = useState(false);
+
+    // State for MoreClassesModal
+    const [showMoreClassesModal, setShowMoreClassesModal] = useState(false);
+    const [selectedDayEvents, setSelectedDayEvents] = useState([]);
+    const [selectedDayDate, setSelectedDayDate] = useState(null);
+
+    // State for teachers
+    const [teachers, setTeachers] = useState([]);
+    const [loadingTeachers, setLoadingTeachers] = useState(false);
 
     // Handle notes save
     const handleSaveNotes = (eventId, notes) => {
-        // In a real app, you would make an API call here to save the notes
-        console.log(`Saving notes for event ${eventId}:`, notes);
+        console.log(`Admin saving notes for event ${eventId}:`, notes);
 
         // Update the local state
         setAllEvents(
@@ -52,18 +71,134 @@ export default function AdminCalendar() {
             )
         );
 
+        setFilteredEvents(
+            filteredEvents.map((event) =>
+                event.id === eventId ? { ...event, notes } : event
+            )
+        );
+
         // If the selected event is the one being updated, update it as well
         if (selectedEvent && selectedEvent.id === eventId) {
             setSelectedEvent({ ...selectedEvent, notes });
         }
+
+        // Force re-render to ensure updates are visible
+        setRenderKey(prev => prev + 1);
+        setForceUpdateTimestamp(Date.now());
+        setCalendarKey(prev => prev + 1);
     };
 
-    // Handle join class
-    const handleJoinClass = (eventId) => {
-        // In a real app, this would open the class in a new tab or redirect to the class page
-        console.log("Joining class:", eventId);
-        // For now, just show an alert
-        alert(`Joining class ${eventId}`);
+    // Handle status change in the modal
+    const handleStatusChange = (eventId, newStatus) => {
+        console.log('Admin HandleStatusChange called:', eventId, newStatus);
+        
+        // Update the selected event status immediately
+        if (selectedEvent && selectedEvent.id === eventId) {
+            setSelectedEvent(prev => ({
+                ...prev,
+                status: newStatus
+            }));
+        }
+        
+        // Update the events in the local state immediately
+        setAllEvents(prevEvents => {
+            const updated = prevEvents.map(event =>
+                event.id === eventId ? { ...event, status: newStatus } : event
+            );
+            console.log('Updated admin allEvents:', updated);
+            return updated;
+        });
+        
+        setFilteredEvents(prevEvents => {
+            const updated = prevEvents.map(event =>
+                event.id === eventId ? { ...event, status: newStatus } : event
+            );
+            console.log('Updated admin filteredEvents:', updated);
+            return updated;
+        });
+
+        // Single refresh to update colors
+        setRenderKey(prev => prev + 1);
+        setForceUpdateTimestamp(Date.now());
+        setCalendarKey(prev => prev + 1);
+        
+        // Trigger cross-component refresh event
+        refreshEventManager.triggerEventUpdate(eventId, 'status_change', 'admin');
+        
+        // Force immediate notification refresh to update bell for teacher
+        if (window.refreshNotifications) {
+            window.refreshNotifications();
+        }
+        
+        // Also trigger immediate teacher calendar refresh
+        setTimeout(() => {
+            refreshEventManager.triggerRefresh('admin_status_change');
+        }, 100);
+    };
+
+    // Handle class update (Update button functionality)
+    const handleUpdateClass = async (eventId, updateData) => {
+        try {
+            setLoading(true);
+            const eventToUpdate = updateData || selectedEvent;
+            if (!eventToUpdate) {
+                console.error('No event selected for update');
+                return;
+            }
+            
+            const payload = {
+                teacher_id: eventToUpdate.teacher_id,
+                student_name: eventToUpdate.student_name,
+                class_type: eventToUpdate.class_type,
+                schedule: eventToUpdate.date ? eventToUpdate.date.toISOString().split('T')[0] : '',
+                time: eventToUpdate.time,
+                status: eventToUpdate.status
+            };
+            
+            const response = await axios.put(`/api/admin/classes/${eventId}`, payload);
+            const updatedEventData = response.data && response.data.class
+                ? { ...response.data.class }
+                : { ...payload, id: eventId };
+            
+            setAllEvents(prevEvents => {
+                const updated = prevEvents.map(event =>
+                    event.id === eventId ? { ...event, ...updatedEventData } : event
+                );
+                setRenderKey(prev => prev + 1);
+                return updated;
+            });
+            
+            setFilteredEvents(prevEvents => {
+                const updated = prevEvents.map(event =>
+                    event.id === eventId ? { ...event, ...updatedEventData } : event
+                );
+                return updated;
+            });
+            
+            setSelectedEvent(prev => prev ? { ...prev, ...updatedEventData } : null);
+            setShowDetailsModal(false);
+            
+            toast.success('Class updated successfully!', {
+                position: 'top-right',
+                autoClose: 2000,
+                hideProgressBar: false,
+                closeOnClick: true,
+                pauseOnHover: true,
+                draggable: true,
+            });
+        } catch (error) {
+            console.error('Error updating class:', error);
+            toast.error('Error updating class.', {
+                position: 'top-right',
+                autoClose: 3000,
+                hideProgressBar: false,
+                closeOnClick: true,
+                pauseOnHover: true,
+                draggable: true,
+            });
+        } finally {
+            setLoading(false);
+        }
     };
 
     // Helper function to convert date to weekday name
@@ -80,485 +215,158 @@ export default function AdminCalendar() {
         return days[date.getDay()];
     };
 
-    // Dummy teachers data - in a real app, this would come from an API
-    const teachers = [
-        { id: "t1", name: "John Smith", email: "john@example.com" },
-        { id: "t2", name: "Sarah Johnson", email: "sarah@example.com" },
-        { id: "t3", name: "Michael Brown", email: "michael@example.com" },
-    ];
-
-    // Status options for filter
+    // Status options for filter (matching the legend)
     const statuses = [
-        "All",
-        "Completed (RG)",
-        "Completed (PRM)",
-        "FC not consumed (RG)",
-        "FC consumed (RG)",
-        "Absent w/ntc counted (RG)",
-        "Absent w/o ntc counted (RG)",
-        "Absent w/ntc-not counted (RG)",
-        "Cancelled (RG)",
+        "Valid for cancellation",
+        "FC not consumed",
+        "Completed",
+        "Absent w/ntc counted",
+        "Cancelled",
+        "Absent w/ntc-not counted",
+        "FC consumed",
+        "Absent Without Notice",
     ];
 
-    // Dummy class data using the same structure as TeachersDailyCalendar.jsx
-    const dummyEvents = [
-        {
-            id: 1,
-            student_name: "Aurora",
-            teacher_id: "t1",
-            teacher_name: "John Smith",
-            day: getWeekdayFromDate(
-                new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 5)
-            ),
-            time: "17:00",
-            duration: 30,
-            class_type: "Regular",
-            status: "FC not consumed (RG)",
-            date: new Date(
-                selectedDate.getFullYear(),
-                selectedDate.getMonth(),
-                5,
-                17,
-                0
-            ),
-            endDate: new Date(
-                selectedDate.getFullYear(),
-                selectedDate.getMonth(),
-                5,
-                17,
-                30
-            ),
-            title: "Aurora (John Smith)",
-        },
-        {
-            id: 2,
-            student_name: "Emma",
-            teacher_id: "t2",
-            teacher_name: "Sarah Johnson",
-            day: getWeekdayFromDate(
-                new Date(
-                    selectedDate.getFullYear(),
-                    selectedDate.getMonth(),
-                    10
-                )
-            ),
-            time: "14:30",
-            duration: 60,
-            class_type: "Premium",
-            status: "Completed (PRM)",
-            date: new Date(
-                selectedDate.getFullYear(),
-                selectedDate.getMonth(),
-                10,
-                14,
-                30
-            ),
-            endDate: new Date(
-                selectedDate.getFullYear(),
-                selectedDate.getMonth(),
-                10,
-                15,
-                30
-            ),
-            title: "Emma (Sarah Johnson)",
-        },
-        {
-            id: 3,
-            student_name: "Liam",
-            teacher_id: "t3",
-            teacher_name: "Michael Brown",
-            day: getWeekdayFromDate(
-                new Date(
-                    selectedDate.getFullYear(),
-                    selectedDate.getMonth(),
-                    15
-                )
-            ),
-            time: "16:00",
-            duration: 45,
-            class_type: "Group",
-            status: "Completed (RG)",
-            date: new Date(
-                selectedDate.getFullYear(),
-                selectedDate.getMonth(),
-                15,
-                16,
-                0
-            ),
-            endDate: new Date(
-                selectedDate.getFullYear(),
-                selectedDate.getMonth(),
-                15,
-                16,
-                45
-            ),
-            title: "Liam (Michael Brown)",
-        },
-        {
-            id: 4,
-            student_name: "Olivia",
-            teacher_id: "t1",
-            teacher_name: "John Smith",
-            day: getWeekdayFromDate(
-                new Date(
-                    selectedDate.getFullYear(),
-                    selectedDate.getMonth(),
-                    20
-                )
-            ),
-            time: "11:00",
-            duration: 30,
-            class_type: "Regular",
-            status: "Absent w/ntc counted",
-            date: new Date(
-                selectedDate.getFullYear(),
-                selectedDate.getMonth(),
-                20,
-                11,
-                0
-            ),
-            endDate: new Date(
-                selectedDate.getFullYear(),
-                selectedDate.getMonth(),
-                20,
-                11,
-                30
-            ),
-            title: "Olivia (John Smith)",
-        },
-        {
-            id: 5,
-            student_name: "Noah",
-            teacher_id: "t2",
-            teacher_name: "Sarah Johnson",
-            day: getWeekdayFromDate(
-                new Date(
-                    selectedDate.getFullYear(),
-                    selectedDate.getMonth(),
-                    25
-                )
-            ),
-            time: "15:30",
-            duration: 60,
-            class_type: "Premium",
-            status: "Cancelled",
-            date: new Date(
-                selectedDate.getFullYear(),
-                selectedDate.getMonth(),
-                25,
-                15,
-                30
-            ),
-            endDate: new Date(
-                selectedDate.getFullYear(),
-                selectedDate.getMonth(),
-                25,
-                16,
-                30
-            ),
-            title: "Noah (Sarah Johnson)",
-        },
-        {
-            id: 6,
-            student_name: "Sophia",
-            teacher_id: "t3",
-            teacher_name: "Michael Brown",
-            day: getWeekdayFromDate(
-                new Date(
-                    selectedDate.getFullYear(),
-                    selectedDate.getMonth() + 1,
-                    0
-                )
-            ),
-            time: "10:00",
-            duration: 30,
-            class_type: "Regular",
-            status: "FC consumed",
-            date: new Date(
-                selectedDate.getFullYear(),
-                selectedDate.getMonth() + 1,
-                0,
-                10,
-                0
-            ),
-            endDate: new Date(
-                selectedDate.getFullYear(),
-                selectedDate.getMonth() + 1,
-                0,
-                10,
-                30
-            ),
-            title: "Sophia (Michael Brown)",
-        },
-        {
-            id: 7,
-            student_name: "Eddie",
-            day: getWeekdayFromDate(
-                new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 6)
-            ),
-            time: "20:00",
-            duration: 30,
-            class_type: "Premium",
-            status: "Completed (PRM)",
-            date: new Date(
-                selectedDate.getFullYear(),
-                selectedDate.getMonth(),
-                6,
-                20,
-                0
-            ),
-            endDate: new Date(
-                selectedDate.getFullYear(),
-                selectedDate.getMonth(),
-                6,
-                20,
-                30
-            ),
-            title: "Eddie",
-        },
-        {
-            id: 8,
-            student_name: "Jane Zhang",
-            day: getWeekdayFromDate(
-                new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 6)
-            ),
-            time: "20:30",
-            duration: 30,
-            class_type: "Regular",
-            status: "Absent w/o ntc counted (RG)",
-            date: new Date(
-                selectedDate.getFullYear(),
-                selectedDate.getMonth(),
-                6,
-                20,
-                30
-            ),
-            endDate: new Date(
-                selectedDate.getFullYear(),
-                selectedDate.getMonth(),
-                6,
-                21,
-                0
-            ),
-            title: "Jane Zhang",
-        },
-        {
-            id: 9,
-            student_name: "Jane Zhang",
-            day: getWeekdayFromDate(
-                new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 6)
-            ),
-            time: "21:00",
-            duration: 30,
-            class_type: "Regular",
-            status: "Absent w/ntc-not counted (RG)",
-            date: new Date(
-                selectedDate.getFullYear(),
-                selectedDate.getMonth(),
-                6,
-                21,
-                0
-            ),
-            endDate: new Date(
-                selectedDate.getFullYear(),
-                selectedDate.getMonth(),
-                6,
-                21,
-                30
-            ),
-            title: "Jane Zhang",
-        },
-        {
-            id: 10,
-            student_name: "Alice Bu",
-            day: getWeekdayFromDate(
-                new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 6)
-            ),
-            time: "21:30",
-            duration: 30,
-            class_type: "Regular",
-            status: "Cancelled (RG)",
-            date: new Date(
-                selectedDate.getFullYear(),
-                selectedDate.getMonth(),
-                6,
-                21,
-                30
-            ),
-            endDate: new Date(
-                selectedDate.getFullYear(),
-                selectedDate.getMonth(),
-                6,
-                22,
-                0
-            ),
-            title: "Alice Bu",
-        },
-        {
-            id: 11,
-            student_name: "Matson Chen",
-            day: getWeekdayFromDate(
-                new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 8)
-            ),
-            time: "17:00",
-            duration: 30,
-            class_type: "Premium",
-            status: "Completed (PRM)",
-            date: new Date(
-                selectedDate.getFullYear(),
-                selectedDate.getMonth(),
-                8,
-                17,
-                0
-            ),
-            endDate: new Date(
-                selectedDate.getFullYear(),
-                selectedDate.getMonth(),
-                8,
-                17,
-                30
-            ),
-            title: "Matson Chen",
-        },
-        {
-            id: 12,
-            student_name: "Group English",
-            day: getWeekdayFromDate(
-                new Date(
-                    selectedDate.getFullYear(),
-                    selectedDate.getMonth(),
-                    10
-                )
-            ),
-            time: "18:00",
-            duration: 60,
-            class_type: "Group",
-            status: "FC not consumed (RG)",
-            date: new Date(
-                selectedDate.getFullYear(),
-                selectedDate.getMonth(),
-                10,
-                18,
-                0
-            ),
-            endDate: new Date(
-                selectedDate.getFullYear(),
-                selectedDate.getMonth(),
-                10,
-                19,
-                0
-            ),
-            title: "Group English",
-        },
-        {
-            id: 13,
-            student_name: "Group Science",
-            day: getWeekdayFromDate(
-                new Date(
-                    selectedDate.getFullYear(),
-                    selectedDate.getMonth(),
-                    12
-                )
-            ),
-            time: "18:30",
-            duration: 60,
-            class_type: "Group",
-            status: "Completed (RG)",
-            date: new Date(
-                selectedDate.getFullYear(),
-                selectedDate.getMonth(),
-                12,
-                18,
-                30
-            ),
-            endDate: new Date(
-                selectedDate.getFullYear(),
-                selectedDate.getMonth(),
-                12,
-                19,
-                30
-            ),
-            title: "Group Science",
-        },
-        {
-            id: 14,
-            student_name: "Matson Chen",
-            day: getWeekdayFromDate(
-                new Date(
-                    selectedDate.getFullYear(),
-                    selectedDate.getMonth(),
-                    14
-                )
-            ),
-            time: "16:30",
-            duration: 30,
-            class_type: "Premium",
-            status: "Completed (PRM)",
-            date: new Date(
-                selectedDate.getFullYear(),
-                selectedDate.getMonth(),
-                14,
-                16,
-                30
-            ),
-            endDate: new Date(
-                selectedDate.getFullYear(),
-                selectedDate.getMonth(),
-                14,
-                17,
-                0
-            ),
-            title: "Matson Chen",
-        },
-        {
-            id: 15,
-            student_name: "Amy Li",
-            day: getWeekdayFromDate(
-                new Date(
-                    selectedDate.getFullYear(),
-                    selectedDate.getMonth(),
-                    15
-                )
-            ),
-            time: "18:00",
-            duration: 30,
-            class_type: "Regular",
-            status: "FC not consumed (RG)",
-            date: new Date(
-                selectedDate.getFullYear(),
-                selectedDate.getMonth(),
-                15,
-                18,
-                0
-            ),
-            endDate: new Date(
-                selectedDate.getFullYear(),
-                selectedDate.getMonth(),
-                15,
-                18,
-                30
-            ),
-            title: "Amy Li",
-        },
-    ];
+    // Removed dummy events - now using real API data from fetchClasses()
 
-    // Dummy class data generator function
-    const generateDummyEvents = () => {
-        // In a real app, this would fetch events from an API
-        // For now, we'll just return the static dummy events
-        return dummyEvents.map((event) => ({
-            ...event,
-            // Make sure dates are fresh Date objects to avoid reference issues
-            date: new Date(event.date),
-            endDate: new Date(event.endDate),
-        }));
+    // Fetch teachers on component mount
+    useEffect(() => {
+        fetchTeachers();
+    }, []);
+
+    // Fetch classes when component mounts, month changes, or teacher filter changes
+    useEffect(() => {
+        fetchClasses();
+    }, [selectedDate, teacherFilter]);
+
+    // Removed auto-refresh mechanism that was polling every 3 seconds
+    
+    // Listen for external refresh events (e.g., from teacher updates)
+    useEffect(() => {
+        let refreshTimeout;
+        
+        const unsubscribe = refreshEventManager.addListener((refreshData) => {
+            console.log('Admin received refresh event:', refreshData);
+            
+            // Clear any existing timeout to debounce rapid refreshes
+            if (refreshTimeout) {
+                clearTimeout(refreshTimeout);
+            }
+            
+            // Debounce refresh calls to prevent rapid fire refreshes
+            refreshTimeout = setTimeout(() => {
+                // Trigger immediate data refresh
+                fetchClasses();
+                
+                // Single refresh for real-time updates
+                setRenderKey(prev => prev + 1);
+                setForceUpdateTimestamp(Date.now());
+                setCalendarKey(prev => prev + 1);
+            }, 300); // 300ms debounce
+        });
+        
+        // Cleanup listener and timeout on unmount
+        return () => {
+            if (refreshTimeout) {
+                clearTimeout(refreshTimeout);
+            }
+            unsubscribe();
+        };
+    }, []);
+
+    // Fetch teachers from API
+    const fetchTeachers = async () => {
+        setLoadingTeachers(true);
+        try {
+            const response = await axios.get('/api/admin/active-teachers');
+            setTeachers(response.data);
+        } catch (error) {
+            console.error('Error fetching teachers:', error);
+            setError('Failed to load teachers');
+        } finally {
+            setLoadingTeachers(false);
+        }
     };
 
-    // Set events on component mount
+    // Fetch classes from API
+    const fetchClasses = async () => {
+        console.log('Admin fetchClasses called for date:', selectedDate);
+        setLoadingClasses(true);
+        try {
+            const params = new URLSearchParams();
+            
+            // Add teacher filter if selected
+            if (teacherFilter !== 'all') {
+                params.append('teacher_id', teacherFilter);
+                console.log('Admin applying teacher filter:', teacherFilter);
+            }
+            
+            // Add date range for current month
+            const startOfMonth = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1);
+            const endOfMonth = new Date(selectedDate.getFullYear(), selectedDate.getMonth() + 1, 0);
+            
+            params.append('start_date', startOfMonth.toISOString().split('T')[0]);
+            params.append('end_date', endOfMonth.toISOString().split('T')[0]);
+            
+            console.log('Admin fetching classes with params:', params.toString());
+            const response = await axios.get(`/api/admin/calendar-classes?${params}`);
+            const classes = response.data;
+            console.log('Admin received classes data:', classes.length, 'classes');
+            
+            // Transform classes to events format for calendar
+            const events = classes.map(cls => {
+                try {
+                    // Safety checks for required fields
+                    if (!cls.date || !cls.time) {
+                        console.warn('Class missing date or time in fetchClasses:', cls);
+                        return null;
+                    }
+                    
+                    // Parse date more carefully to avoid timezone issues
+                    const [year, month, day] = cls.date.split('-').map(num => parseInt(num, 10));
+                    const [hours, minutes] = cls.time.split(':').map(num => parseInt(num, 10));
+                    
+                    // Create date using local timezone to avoid date shifting
+                    const date = new Date(year, month - 1, day, hours, minutes);
+                    const endDate = new Date(date.getTime() + (cls.duration || 60) * 60000);
+                    
+                    return {
+                        id: cls.id,
+                        student_name: cls.student_name,
+                        teacher_id: cls.teacher_id,
+                        teacher_name: cls.teacher_name,
+                        day: cls.day,
+                        time: cls.time,
+                        duration: cls.duration || 60,
+                        class_type: cls.class_type,
+                        status: cls.status,
+                        date: date,
+                        endDate: endDate,
+                        notes: cls.notes || '',
+                        title: cls.student_name + (cls.teacher_name ? ` (${cls.teacher_name})` : '')
+                    };
+                } catch (error) {
+                    console.error('Error transforming class data in fetchClasses:', cls, error);
+                    return null; // Return null for invalid entries
+                }
+            }).filter(event => event !== null); // Remove null entries
+            
+            console.log('Admin transformed events:', events.length, 'events');
+            setAllEvents(events);
+            setFilteredEvents(events);
+            setRenderKey(prev => prev + 1); // Force re-render after fetching new events
+        } catch (error) {
+            console.error('Admin error fetching classes:', error);
+            setError('Failed to load classes');
+        } finally {
+            setLoadingClasses(false);
+        }
+    };
+
+    // Fetch data on mount
     useEffect(() => {
-        const events = generateDummyEvents();
-        setAllEvents(events);
-        setFilteredEvents(events);
+        fetchTeachers();
+        fetchClasses();
     }, []);
 
     // Filter events when filters change
@@ -568,7 +376,7 @@ export default function AdminCalendar() {
         // Apply teacher filter
         if (teacherFilter !== "all") {
             filtered = filtered.filter(
-                (event) => event.teacher_id === teacherFilter
+                (event) => event.teacher_id == teacherFilter // Use == instead of === to handle type mismatch
             );
         }
 
@@ -615,9 +423,14 @@ export default function AdminCalendar() {
         // Add days from previous month
         for (let i = daysFromPrevMonth - 1; i >= 0; i--) {
             const date = new Date(year, month, -i);
+            const today = new Date();
+            const isToday = date.getFullYear() === today.getFullYear() && 
+                           date.getMonth() === today.getMonth() && 
+                           date.getDate() === today.getDate();
             days.push({
                 date,
                 isCurrentMonth: false,
+                isToday,
                 events: getEventsForDate(date),
             });
         }
@@ -625,9 +438,14 @@ export default function AdminCalendar() {
         // Add days from current month
         for (let i = 1; i <= lastDay.getDate(); i++) {
             const date = new Date(year, month, i);
+            const today = new Date();
+            const isToday = date.getFullYear() === today.getFullYear() && 
+                           date.getMonth() === today.getMonth() && 
+                           date.getDate() === today.getDate();
             days.push({
                 date,
                 isCurrentMonth: true,
+                isToday,
                 events: getEventsForDate(date),
             });
         }
@@ -636,9 +454,14 @@ export default function AdminCalendar() {
         const remainingDays = 42 - days.length; // Always show 6 weeks
         for (let i = 1; i <= remainingDays; i++) {
             const date = new Date(year, month + 1, i);
+            const today = new Date();
+            const isToday = date.getFullYear() === today.getFullYear() && 
+                           date.getMonth() === today.getMonth() && 
+                           date.getDate() === today.getDate();
             days.push({
                 date,
                 isCurrentMonth: false,
+                isToday,
                 events: getEventsForDate(date),
             });
         }
@@ -648,33 +471,52 @@ export default function AdminCalendar() {
 
     // Helper function to get events for a specific date
     const getEventsForDate = (date) => {
-        const dateString = date.toISOString().split("T")[0];
+        console.log('Admin getEventsForDate called for:', date.toDateString());
+        // Use local date string comparison to avoid timezone issues
+        const targetYear = date.getFullYear();
+        const targetMonth = date.getMonth();
+        const targetDay = date.getDate();
+        
+        // Only filter by date - other filters are already applied in filteredEvents
         const filtered = filteredEvents.filter((event) => {
-            // Filter by date
-            const eventDate = new Date(event.date).toISOString().split("T")[0];
-            if (eventDate !== dateString) return false;
-
-            // Apply search filter if present
-            if (
-                searchQuery &&
-                !event.student_name
-                    .toLowerCase()
-                    .includes(searchQuery.toLowerCase())
-            ) {
+            // Safety check: ensure event and event.date exist
+            if (!event || !event.date) {
+                console.warn('Admin event with missing date found:', event);
                 return false;
             }
-
-            // Apply status filter if not 'all'
-            if (statusFilter !== "all" && event.status !== statusFilter) {
+            
+            // Ensure event.date is a valid Date object
+            const eventDate = event.date instanceof Date ? event.date : new Date(event.date);
+            
+            // Check if the date is valid
+            if (isNaN(eventDate.getTime())) {
+                console.warn('Admin event with invalid date found:', event);
                 return false;
             }
-
-            return true;
+            
+            // Compare year, month, and day directly to avoid timezone issues
+            const eventYear = eventDate.getFullYear();
+            const eventMonth = eventDate.getMonth();
+            const eventDay = eventDate.getDate();
+            
+            return eventYear === targetYear && eventMonth === targetMonth && eventDay === targetDay;
         });
 
+        // Sort events by time (8:00, 8:30, 9:00, etc.)
+        const sortedFiltered = filtered.sort((a, b) => {
+            // If either event doesn't have a time, put it at the end
+            if (!a.time && !b.time) return 0;
+            if (!a.time) return 1;
+            if (!b.time) return -1;
+            
+            // Use localeCompare for consistent time string comparison
+            return a.time.localeCompare(b.time);
+        });
+
+        console.log(`Admin found ${filtered.length} events for ${date.toDateString()}, sorted by time`);
         return {
-            items: filtered,
-            total: filtered.length,
+            items: sortedFiltered,
+            total: sortedFiltered.length,
         };
     };
 
@@ -696,125 +538,169 @@ export default function AdminCalendar() {
 
     // Event handlers
     const handleEventClick = (event) => {
+        console.log('Admin handleEventClick called with event:', event);
+        // No need to gather all students, just show the selected student's event
         setSelectedEvent(event);
         setShowDetailsModal(true);
+        console.log('Admin details modal opened for event:', event.id);
     };
 
-    const handleEventUpdated = (eventId, newStatus) => {
-        // In a real app, you would make an API call here to update the event status
-        // For now, we'll just update the local state
-        const updatedEvents = events.map((event) => {
-            if (event.id === eventId) {
-                return { ...event, status: newStatus };
-            }
-            return event;
-        });
-
-        setEvents(updatedEvents);
-        setShowDetailsModal(false);
-
-        // In a real application, we would show a success message
-        console.log(`Updated class ${eventId} status to ${newStatus}`);
+    const handleMoreClassesClick = (dayEvents, dayDate) => {
+        console.log('Admin handleMoreClassesClick called with:', { dayEvents, dayDate });
+        // dayEvents now contains only the hidden events passed from the button click
+        setSelectedDayEvents(dayEvents);
+        setSelectedDayDate(dayDate);
+        setShowMoreClassesModal(true);
+        console.log('Admin modal state updated, showMoreClassesModal:', true);
     };
 
-    // Helper function to get event icon and styling based on class type and status
-    const getEventStyles = (classType, status = "scheduled") => {
+    const handleEventUpdated = async (eventId, newStatus) => {
+        try {
+            // Make API call to update the status
+            await axios.patch(`/api/admin/classes/${eventId}/status`, {
+                status: newStatus
+            });
+            
+            // Update local state
+            const updatedAllEvents = allEvents.map((event) => {
+                if (event.id === eventId) {
+                    return { ...event, status: newStatus };
+                }
+                return event;
+            });
+
+            const updatedFilteredEvents = filteredEvents.map((event) => {
+                if (event.id === eventId) {
+                    return { ...event, status: newStatus };
+                }
+                return event;
+            });
+
+            setAllEvents(updatedAllEvents);
+            setFilteredEvents(updatedFilteredEvents);
+            
+            // Force re-render to update colors immediately
+            setRenderKey(prev => prev + 1);
+            setForceUpdateTimestamp(Date.now());
+            setCalendarKey(prev => prev + 1);
+            
+            // Additional forced update
+            setTimeout(() => {
+                setRenderKey(prev => prev + 1);
+                setForceUpdateTimestamp(Date.now());
+                setCalendarKey(prev => prev + 1);
+            }, 50);
+            
+            // Force state refresh
+            setTimeout(() => {
+                setAllEvents(prevEvents => [...prevEvents]);
+                setFilteredEvents(prevEvents => [...prevEvents]);
+            }, 100);
+            
+            setShowDetailsModal(false);
+
+            console.log(`Updated admin class ${eventId} status to ${newStatus}`);
+        } catch (error) {
+            console.error('Error updating class status:', error);
+            alert('Failed to update class status. Please try again.');
+        }
+    };
+
+    // Helper function to get event styles (matching TeacherCalendar.jsx)
+    const getEventStyles = (classType, status = 'scheduled') => {
         // Class type styling (border color)
-        let border = "";
+        let border = '';
         let typeIcon = null;
-
+        
         switch (classType) {
             case "Premium":
-                border = "border-amber-500";
-                typeIcon = <Gem className="h-3 w-3 text-amber-600 mr-1" />;
+                border = 'border-orange-400';
+                typeIcon = <Gem className="h-3 w-3 text-white-600 mr-1" />;
                 break;
             case "Group":
-                border = "border-orange-500";
-                typeIcon = <Users className="h-3 w-3 text-orange-600 mr-1" />;
+                border = 'border-[#4A9782]';
+                typeIcon = <Users className="h-3 w-3 text-white mr-1" />;
                 break;
             case "Regular":
             default:
-                border = "border-navy-500";
-                typeIcon = <User className="h-3 w-3 text-navy-600 mr-1" />;
+                border = 'border-navy-500';
+                typeIcon = <User className="h-3 w-3 text-white-600 mr-1" />;
                 break;
         }
-
-        // Status styling (background color)
-        let bg = "";
-        let text = "";
+        
+        // Status styling (background color matching legend)
+        let bg = '';
+        let text = '';
+        let secondaryText = '';
         let statusIcon = null;
-
+        
         switch (status) {
-            case "FC not consumed (RG)":
-                bg = "bg-purple-100";
-                text = "text-purple-900";
-                statusIcon = (
-                    <Calendar className="h-3 w-3 text-purple-700 mr-1" />
-                );
+            case 'Valid for cancellation':
+            case 'Valid for Cancellation':
+                bg = 'bg-gray-400';
+                text = 'text-white';
+                secondaryText = 'text-white';
+                statusIcon = <Calendar className="h-3 w-3 text-gray-200 mr-1" />;
                 break;
-            case "FC consumed (RG)":
-                bg = "bg-purple-200";
-                text = "text-purple-900";
-                statusIcon = (
-                    <Calendar className="h-3 w-3 text-purple-700 mr-1" />
-                );
+            case 'FC not consumed':
+            case 'Free Class':
+                bg = 'bg-yellow-400';
+                text = 'text-black';
+                secondaryText = 'text-black';
+                statusIcon = <Calendar className="h-3 w-3 text-yellow-200 mr-1" />;
                 break;
-            case "Completed (RG)":
-            case "completed":
-                bg = "bg-green-100";
-                text = "text-green-900";
-                statusIcon = (
-                    <CheckCircle2 className="h-3 w-3 text-green-700 mr-1" />
-                );
+            case 'Completed':
+                bg = 'bg-green-400';
+                text = 'text-white';
+                secondaryText = 'text-white';
+                statusIcon = <CheckCircle2 className="h-3 w-3 text-green-800 mr-1" />;
                 break;
-            case "Completed (PRM)":
-                bg = "bg-blue-100";
-                text = "text-blue-900";
-                statusIcon = (
-                    <CheckCircle2 className="h-3 w-3 text-blue-700 mr-1" />
-                );
+            case 'Absent w/ntc counted':
+                bg = 'bg-blue-400';
+                text = 'text-white';
+                secondaryText = 'text-white';
+                statusIcon = <AlertCircle className="h-3 w-3 text-blue-800 mr-1" />;
                 break;
-            case "Absent w/ntc counted (RG)":
-                bg = "bg-yellow-100";
-                text = "text-yellow-900";
-                statusIcon = (
-                    <AlertCircle className="h-3 w-3 text-yellow-700 mr-1" />
-                );
+            case 'Cancelled':
+                bg = 'bg-purple-400';
+                text = 'text-white';
+                secondaryText = 'text-white';
+                statusIcon = <XCircle className="h-3 w-3 text-purple-800 mr-1" />;
                 break;
-            case "Absent w/o ntc counted (RG)":
-                bg = "bg-amber-100";
-                text = "text-amber-900";
-                statusIcon = (
-                    <AlertCircle className="h-3 w-3 text-amber-700 mr-1" />
-                );
+            case 'Absent w/ntc-not counted':
+                bg = 'bg-gray-600';
+                text = 'text-white';
+                secondaryText = 'text-white';
+                statusIcon = <AlertCircle className="h-3 w-3 text-orange-800 mr-1" />;
                 break;
-            case "Absent w/ntc-not counted (RG)":
-                bg = "bg-orange-100";
-                text = "text-orange-900";
-                statusIcon = (
-                    <AlertCircle className="h-3 w-3 text-orange-700 mr-1" />
-                );
+            case 'FC consumed':
+                bg = 'bg-pink-400';
+                text = 'text-white';
+                secondaryText = 'text-white';
+                statusIcon = <Calendar className="h-3 w-3 text-pink-800 mr-1" />;
                 break;
-            case "Cancelled (RG)":
-            case "cancelled":
-                bg = "bg-red-100";
-                text = "text-red-900";
-                statusIcon = <XCircle className="h-3 w-3 text-red-700 mr-1" />;
+            case 'Absent Without Notice':
+                bg = 'bg-red-400';
+                text = 'text-white';
+                secondaryText = 'text-white';
+                statusIcon = <AlertCircle className="h-3 w-3 text-red-800 mr-1" />;
                 break;
-            case "scheduled":
+            case 'scheduled':
             default:
-                bg = "bg-orange-50";
-                text = "text-orange-800";
-                statusIcon = <Calendar className="h-3 w-3 text-orange-600" />;
+                bg = 'bg-slate-400';
+                text = 'text-slate-900';
+                secondaryText = 'text-slate-700';
+                statusIcon = <Calendar className="h-3 w-3 text-slate-800" />;
                 break;
         }
-
+        
         return {
             bg,
             text,
+            secondaryText,
             border,
             typeIcon,
-            statusIcon,
+            statusIcon
         };
     };
 
@@ -851,7 +737,20 @@ export default function AdminCalendar() {
     return (
         <AdminLayout>
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+                {/* Success Message */}
+                {updateSuccess && (
+                    <div className="fixed top-4 right-4 z-50 bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg transform transition-all duration-300 ease-in-out">
+                        <div className="flex items-center">
+                            <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                            </svg>
+                            Class updated successfully!
+                        </div>
+                    </div>
+                )}
+
                 <Legend/>
+                
                 {/* Search and Filter Container */}
                 <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-6 relative z-10">
                     <div className="flex flex-col sm:flex-row gap-4 items-center justify-between">
@@ -1029,24 +928,63 @@ export default function AdminCalendar() {
                                                         type="button"
                                                         className={`w-full rounded-md px-3 py-2 text-left text-sm transition-all duration-200 flex items-center ${
                                                             !statusFilter ||
-                                                            statusFilter ===
-                                                                "all"
+                                                            statusFilter === "all"
                                                                 ? "bg-navy-600 text-white"
                                                                 : "text-gray-700 hover:bg-gray-100"
                                                         }`}
                                                         onClick={() => {
-                                                            setStatusFilter(
-                                                                "all"
-                                                            );
-                                                            setFilterOpen(
-                                                                false
-                                                            );
+                                                            setStatusFilter("all");
+                                                            setFilterOpen(false);
                                                         }}
                                                     >
-                                                        <ListFilter className="h-4 w-4 mr-2" />
                                                         All Statuses
                                                     </button>
-                                                    {statuses.map((status) => (
+                                                    
+                                                    {statuses.map((status) => {
+                                                        // Get status color based on status name (matching legend)
+                                                        let statusColor = '';
+                                                        let borderColor = '';
+                                                        
+                                                        switch (status) {
+                                                            case 'Valid for cancellation':
+                                                                statusColor = 'bg-gray-400';
+                                                                borderColor = 'border-gray-500';
+                                                                break;
+                                                            case 'FC not consumed':
+                                                                statusColor = 'bg-yellow-400';
+                                                                borderColor = 'border-yellow-500';
+                                                                break;
+                                                            case 'Completed':
+                                                                statusColor = 'bg-green-400';
+                                                                borderColor = 'border-green-500';
+                                                                break;
+                                                            case 'Absent w/ntc counted':
+                                                                statusColor = 'bg-blue-400';
+                                                                borderColor = 'border-blue-500';
+                                                                break;
+                                                            case 'Cancelled':
+                                                                statusColor = 'bg-purple-400';
+                                                                borderColor = 'border-purple-500';
+                                                                break;
+                                                            case 'Absent w/ntc-not counted':
+                                                                statusColor = 'bg-gray-600';
+                                                                borderColor = 'border-gray-600';
+                                                                break;
+                                                            case 'FC consumed':
+                                                                statusColor = 'bg-pink-400';
+                                                                borderColor = 'border-pink-400';
+                                                                break;
+                                                            case 'Absent Without Notice':
+                                                                statusColor = 'bg-red-400';
+                                                                borderColor = 'border-red-500';
+                                                                break;
+                                                            default:
+                                                                statusColor = 'bg-[#4B5563]';
+                                                                borderColor = 'border-[#4B5563]';
+                                                                break;
+                                                        }
+                                                        
+                                                        return (
                                                         <button
                                                             key={status}
                                                             type="button"
@@ -1057,36 +995,15 @@ export default function AdminCalendar() {
                                                                     : "hover:bg-gray-100 text-gray-700"
                                                             }`}
                                                             onClick={() => {
-                                                                setStatusFilter(
-                                                                    status ===
-                                                                        "All"
-                                                                        ? "all"
-                                                                        : status
-                                                                );
-                                                                setFilterOpen(
-                                                                    false
-                                                                );
+                                                                setStatusFilter(status);
+                                                                setFilterOpen(false);
                                                             }}
                                                         >
-                                                            {status ===
-                                                                "Completed (RG)" ||
-                                                            status ===
-                                                                "Completed (PRM)" ? (
-                                                                <CheckCircle2 className="h-4 w-4 mr-2 text-green-500" />
-                                                            ) : status.includes(
-                                                                  "Cancelled"
-                                                              ) ? (
-                                                                <XCircle className="h-4 w-4 mr-2 text-red-500" />
-                                                            ) : status.includes(
-                                                                  "Absent"
-                                                              ) ? (
-                                                                <AlertCircle className="h-4 w-4 mr-2 text-amber-500" />
-                                                            ) : (
-                                                                <Calendar className="h-4 w-4 mr-2 text-blue-500" />
-                                                            )}
+                                                            <span className={`w-4 h-4 ${statusColor} ${borderColor} border flex-shrink-0 rounded-sm mr-3`}></span>
                                                             {status}
                                                         </button>
-                                                    ))}
+                                                        );
+                                                    })}
                                                 </div>
                                             </div>
                                         </div>
@@ -1126,7 +1043,7 @@ export default function AdminCalendar() {
                 </div>
 
                 {/* Calendar View */}
-                <div className="bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden w-full">
+                <div key={renderKey} className="bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden w-full">
                     <div className="flex items-center justify-between p-2 sm:p-3 bg-navy-700">
                         <h2 className="text-sm sm:text-base font-semibold text-white">
                             Monthly View
@@ -1185,7 +1102,7 @@ export default function AdminCalendar() {
 
                                         return (
                                             <div
-                                                key={day.date.toISOString()}
+                                                key={`${day.date.toISOString()}-${renderKey}-${forceUpdateTimestamp}`}
                                                 className={`min-h-[4rem] sm:min-h-28 p-1 border-r border-b border-navy-100 transition-colors duration-150 ${
                                                     day.isCurrentMonth
                                                         ? "bg-white hover:bg-navy-50"
@@ -1215,104 +1132,53 @@ export default function AdminCalendar() {
 
                                                 {day.events.total > 0 && (
                                                     <div className="mt-1 space-y-0.5">
-                                                        {day.events.items
-                                                            .slice(
-                                                                0,
-                                                                maxVisibleEvents
-                                                            )
-                                                            .map(
-                                                                (
-                                                                    event,
-                                                                    eventIndex
-                                                                ) => (
+                                                        {/* Display individual cards for all events, including group classes */}
+                                                        {(() => {
+                                                            // Don't group classes - display each student individually
+                                                            const allEvents = [...day.events.items];
+                                                            
+                                                            // Create individual cards for all events
+                                                            const eventCards = allEvents.map((event) => {
+                                                                const isEditing = showDetailsModal && selectedEvent && selectedEvent.id === event.id;
+                                                                const statusForColor = isEditing && typeof window !== 'undefined' && window.__ADMIN_MODAL_LOCAL_STATUS__
+                                                                    ? window.__ADMIN_MODAL_LOCAL_STATUS__
+                                                                    : event.status;
+                                                                const eventStyles = getEventStyles(event.class_type, statusForColor);
+                                                                return (
                                                                     <div
-                                                                        key={
-                                                                            eventIndex
-                                                                        }
-                                                                        onClick={() =>
-                                                                            handleEventClick(
-                                                                                event
-                                                                            )
-                                                                        }
-                                                                        className={`text-[9px] p-1 rounded cursor-pointer hover:opacity-90 transition-all duration-200 ${
-                                                                            getEventStyles(
-                                                                                event.class_type,
-                                                                                event.status
-                                                                            ).bg
-                                                                        } border-l-2 ${
-                                                                            getEventStyles(
-                                                                                event.class_type,
-                                                                                event.status
-                                                                            )
-                                                                                .border
-                                                                        }`}
+                                                                        key={`${event.id}-${event.status}-${renderKey}-${forceUpdateTimestamp}`}
+                                                                        onClick={() => handleEventClick(event)}
+                                                                        className={`text-[9px] p-1 rounded cursor-pointer hover:opacity-90 transition-all duration-200 ${eventStyles.bg} border-l-4 ${eventStyles.border}`}
                                                                     >
                                                                         <div className="flex items-center justify-between">
                                                                             <div className="flex flex-col overflow-hidden">
                                                                                 <div className="flex items-center">
-                                                                                    {
-                                                                                        getEventStyles(
-                                                                                            event.class_type,
-                                                                                            event.status
-                                                                                        )
-                                                                                            .typeIcon
-                                                                                    }
-                                                                                    <span
-                                                                                        className={`font-medium truncate max-w-[60px] xs:max-w-[80px] ${
-                                                                                            getEventStyles(
-                                                                                                event.class_type,
-                                                                                                event.status
-                                                                                            )
-                                                                                                .text
-                                                                                        }`}
-                                                                                    >
-                                                                                        {
-                                                                                            event.student_name
-                                                                                        }
-                                                                                    </span>
+                                                                                    {eventStyles.typeIcon}
+                                                                                    <span className={`font-medium truncate max-w-[60px] xs:max-w-[80px] ${eventStyles.text}`}>{event.student_name}</span>
                                                                                 </div>
-                                                                                <div
-                                                                                    className="text-[8px] text-navy-500 truncate"
-                                                                                    title={
-                                                                                        event.teacher_name
-                                                                                    }
-                                                                                >
-                                                                                    {
-                                                                                        event.teacher_name
-                                                                                    }
-                                                                                </div>
+                                                                                <div className={`text-[8px] truncate ${eventStyles.secondaryText}`} title={event.teacher_name}>{event.teacher_name}</div>
                                                                             </div>
                                                                         </div>
-                                                                        <div className="flex items-center justify-between mt-0.5 text-[8px] text-navy-500">
-                                                                            <span>
-                                                                                {event.date.toLocaleTimeString(
-                                                                                    [],
-                                                                                    {
-                                                                                        hour: "2-digit",
-                                                                                        minute: "2-digit",
-                                                                                    }
-                                                                                )}
-                                                                            </span>
-                                                                            <span className="flex items-center">
-                                                                                <Clock className="h-2 w-2 mr-0.5" />
-                                                                                {
-                                                                                    event.duration
-                                                                                }{" "}
-                                                                                min
-                                                                            </span>
+                                                                        <div className={`flex items-center justify-between mt-0.5 text-[8px] ${eventStyles.secondaryText}`}>
+                                                                            <span>{event.date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", hour12: true })}</span>
+                                                                            <span className="flex items-center"><Clock className="h-2 w-2 mr-0.5" />{event.duration} min</span>
                                                                         </div>
                                                                     </div>
-                                                                )
-                                                            )}
+                                                                );
+                                                            });
+                                                            
+                                                            // Show up to maxVisibleEvents
+                                                            return eventCards.slice(0, maxVisibleEvents);
+                                                        })()}
                                                         {hasMoreEvents && (
                                                             <button
                                                                 onClick={(
                                                                     e
                                                                 ) => {
                                                                     e.stopPropagation();
-                                                                    setSelectedDate(
-                                                                        day.date
-                                                                    );
+                                                                    // Pass only the hidden events (the ones not displayed)
+                                                                    const hiddenEvents = day.events.items.slice(maxVisibleEvents);
+                                                                    handleMoreClassesClick(hiddenEvents, day.date);
                                                                 }}
                                                                 className="text-[9px] text-navy-500 hover:text-navy-700 w-full text-left px-1 py-0.5 hover:bg-navy-50 rounded"
                                                             >
@@ -1340,9 +1206,29 @@ export default function AdminCalendar() {
                 isOpen={showDetailsModal}
                 onClose={() => setShowDetailsModal(false)}
                 event={selectedEvent}
+                onStatusChange={handleStatusChange}
                 onNotesSave={handleSaveNotes}
-                onJoinClass={handleJoinClass}
+                onJoinClass={handleUpdateClass}
             />
+
+            {/* More Classes Modal */}
+            <MoreClassesModal
+                isOpen={showMoreClassesModal}
+                onClose={() => {
+                    console.log('Admin MoreClassesModal closing');
+                    setShowMoreClassesModal(false);
+                }}
+                classes={selectedDayEvents}
+                timeSlot="Additional Classes"
+                day={selectedDayDate ? selectedDayDate.toLocaleDateString('en-US', { 
+                    weekday: 'long', 
+                    year: 'numeric', 
+                    month: 'long', 
+                    day: 'numeric' 
+                }) : ''}
+                onClassClick={handleEventClick}
+            />
+            <ToastContainer />
         </AdminLayout>
     );
 }

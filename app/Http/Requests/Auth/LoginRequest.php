@@ -49,6 +49,23 @@ class LoginRequest extends FormRequest
             ]);
         }
 
+        // Check if the authenticated user's account is deactivated
+        $user = Auth::user();
+        if ($user && $user->status === 'inactive') {
+            Auth::logout();
+            
+            // Provide specific error type for deactivated teacher accounts
+            if ($user->role === 'teacher') {
+                throw ValidationException::withMessages([
+                    'account_deactivated' => 'teacher_deactivated',
+                ]);
+            }
+            
+            throw ValidationException::withMessages([
+                'email' => 'Your account has been deactivated. Please contact the administrator for assistance.',
+            ]);
+        }
+
         RateLimiter::clear($this->throttleKey());
     }
 

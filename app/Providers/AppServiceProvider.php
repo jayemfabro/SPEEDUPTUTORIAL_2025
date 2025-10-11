@@ -20,6 +20,10 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        Vite::prefetch(concurrency: 3);
+        // Disable preload tags to prevent browser warnings
+        Vite::usePreloadTagAttributes(false);
+        
+        // Set a reasonable prefetch concurrency
+        Vite::prefetch(concurrency: 2);
     }
 }

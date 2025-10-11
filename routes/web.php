@@ -1,13 +1,45 @@
 <?php
 
 use App\Http\Controllers\ProfileController;
-use App\Http\Controllers\Admin\TeachersController;
+use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\Admin\AdminTeachersController;
+use App\Http\Controllers\Admin\AdminStudentController;
+use App\Http\Controllers\Admin\AdminClassController;
 use App\Http\Controllers\Admin\StudentController;
 use App\Http\Controllers\Admin\ClassController;
-use App\Http\Controllers\Admin\SettingsController;
+use App\Http\Controllers\Admin\AdminPromotionalController;
 use Illuminate\Foundation\Application;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Broadcast;
 use Inertia\Inertia;
+
+/*
+|--------------------------------------------------------------------------
+| Broadcasting Channels
+|--------------------------------------------------------------------------
+*/
+// Broadcasting auth route
+Broadcast::routes(['middleware' => ['web', 'auth']]);
+
+// Broadcast channels
+Broadcast::channel('App.Models.User.{id}', function ($user, $id) {
+    return (int) $user->id === (int) $id;
+});
+
+Broadcast::channel('notifications.{userId}', function ($user, $userId) {
+    return (int) $user->id === (int) $userId;
+});
+
+/*
+|--------------------------------------------------------------------------
+| Public Routes
+|--------------------------------------------------------------------------
+*/
+
+Route::get('/csrf-token', function () {
+    return response()->json(['csrf_token' => csrf_token()]);
+})->middleware(['web']);
 
 Route::get('/', function () {
     return Inertia::render('Welcome', [
@@ -23,83 +55,35 @@ Route::get('/inquiry', function () {
 })->name('inquiry');
 
 Route::get('/announcement/{id}', function ($id) {
-    // Announcement data based on ID
-    $announcements = [
-        '1' => [
-            'id' => 1,
-            'title' => 'Summer Learning Program Registration Open!',
-            'badge' => 'Featured',
-            'date' => 'June 28, 2025',
-            'location' => 'Speed Up Tutorial Center - Main Campus',
-            'time' => '9:00 AM - 5:00 PM',
-            'image' => 'https://images.unsplash.com/photo-1523240795612-9a054b0db644?ixlib=rb-4.0.3&auto=format&fit=crop&w=1050&q=80',
-            'tags' => ['summer', 'learning', 'enrollment'],
-            'content' => [
-                'Enroll your child in our intensive summer learning program designed to bridge learning gaps and prepare them for the upcoming school year. Limited slots available!',
-                'Our summer program offers a comprehensive curriculum covering mathematics, science, language arts, and critical thinking skills. Each student receives personalized attention with small class sizes and experienced instructors.',
-                'The program runs for 8 weeks from July 1 to August 25, with flexible scheduling options to accommodate your family\'s summer plans. Students can attend 2-5 days per week, with morning or afternoon sessions available.',
-                'Early registration discounts are available until June 30th. Secure your child\'s spot today and give them the academic advantage they deserve this summer!'
-            ],
-            'callToAction' => [
-                'title' => 'Register for the Summer Learning Program',
-                'description' => 'Spaces are limited and filling up quickly. Contact us today to secure your child\'s spot in our summer learning program.',
-                'buttonText' => 'Register Now'
-            ]
-        ],
-        '2' => [
-            'id' => 2,
-            'title' => 'New Premium Math Tutoring Package Available',
-            'badge' => 'New',
-            'date' => 'July 15, 2025',
-            'image' => 'https://images.unsplash.com/photo-1577896851231-70ef18881754?ixlib=rb-4.0.3&auto=format&fit=crop&w=1050&q=80',
-            'tags' => ['premium', 'math', 'tutoring'],
-            'content' => [
-                'Introducing our new Premium Math Tutoring Package with specialized instructors for advanced mathematics. Perfect for students aiming for excellence in competitive exams.',
-                'Our premium package includes one-on-one sessions with expert math tutors who specialize in advanced topics including calculus, statistics, and competitive math preparation. Each tutor has extensive experience preparing students for math competitions and college entrance exams.',
-                'Students will receive personalized learning plans, regular progress assessments, and access to our exclusive online math resources. The package also includes practice tests and targeted preparation for specific exams like SAT, ACT, or AP Mathematics.',
-                'Whether your child is struggling with complex math concepts or looking to excel beyond the standard curriculum, our Premium Math Tutoring Package provides the specialized support they need to succeed.'
-            ],
-            'callToAction' => [
-                'title' => 'Upgrade to Premium Math Tutoring',
-                'description' => 'Give your child the advantage of specialized math instruction with our premium tutoring package.',
-                'buttonText' => 'Learn More & Enroll'
-            ]
-        ],
-        '3' => [
-            'id' => 3,
-            'title' => 'Back to School Special Discount',
-            'badge' => 'Discount',
-            'date' => 'August 5, 2025',
-            'image' => 'https://images.unsplash.com/photo-1427504494785-3a9ca7044f45?ixlib=rb-4.0.3&auto=format&fit=crop&w=1050&q=80',
-            'tags' => ['discount', 'back-to-school', 'special'],
-            'content' => [
-                'Get 20% off on all tutoring packages when you register before September 1st. Prepare your child for academic success with our expert tutors.',
-                'The new school year brings new challenges and opportunities. Our Back to School Special helps families prepare their children for success with discounted rates on all our regular tutoring services.',
-                'This limited-time offer applies to all subject areas including mathematics, science, language arts, social studies, and foreign languages. Both individual and group tutoring sessions are eligible for the discount.',
-                'In addition to the 20% discount, families who register for a full semester will receive a free academic assessment and personalized study plan to target their child\'s specific needs and goals.',
-                'Don\'t miss this opportunity to invest in your child\'s education at a reduced rate. Contact us today to schedule a free consultation and learn how our tutoring services can support your child\'s academic journey.'
-            ],
-            'callToAction' => [
-                'title' => 'Claim Your 20% Discount',
-                'description' => 'Register before September 1st to take advantage of our Back to School Special offer.',
-                'buttonText' => 'Claim Discount'
-            ]
-        ]
+    // Get the promotional post from database
+    $promotional = \App\Models\Admin\Promotional::findOrFail($id);
+    
+    // Format data to match Announcement component expectations
+    $announcement = [
+        'id' => $promotional->id,
+        'title' => $promotional->title,
+        'badge' => 'Promotion',
+        'date' => $promotional->created_at->format('F d, Y'),
+        'image' => $promotional->image ?? 'https://placehold.co/600x400?text=No+Image',
+        'tags' => ['promotion'],
+        // Split description into paragraphs
+        'content' => preg_split('/\r\n|\r|\n/', $promotional->description)
     ];
     
-    // Return 404 if announcement not found
-    if (!isset($announcements[$id])) {
-        abort(404);
+    if ($promotional->expires_at) {
+        $announcement['badge'] = 'Limited Time';
+        $announcement['expires_at'] = $promotional->expires_at->format('F d, Y');
+        $announcement['tags'][] = 'limited-time';
     }
     
     return Inertia::render('Announcement', [
-        'announcement' => $announcements[$id]
+        'announcement' => $announcement
     ]);
 })->name('announcement.show');
 
-    Route::get('/dashboard', function () {
-        return Inertia::render('Dashboard');
-})->middleware(['auth', 'verified'])->name('dashboard');
+Route::get('/dashboard', [DashboardController::class, 'index'])
+    ->middleware(['auth', 'verified'])
+    ->name('dashboard');
 
 /*
 |--------------------------------------------------------------------------
@@ -110,6 +94,20 @@ Route::middleware('auth')->group(function () {
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
+    
+    // Debug routes for profile photo
+    Route::get('/debug/profile-photo', [\App\Http\Controllers\DebugController::class, 'checkProfilePhoto']);
+    Route::get('/debug/teacher-photo', function() {
+        $teacher = \App\Models\User::where('role', 'teacher')->first();
+        return [
+            'user_id' => $teacher->id,
+            'name' => $teacher->name,
+            'profile_photo_path' => $teacher->profile_photo_path,
+            'profile_photo_url' => $teacher->profile_photo_url,
+            'image' => $teacher->image,
+            'storage_exists' => $teacher->profile_photo_path ? \Illuminate\Support\Facades\Storage::disk('public')->exists($teacher->profile_photo_path) : false,
+        ];
+    });
 });
 
 require __DIR__.'/auth.php';
@@ -119,10 +117,25 @@ require __DIR__.'/auth.php';
 | Teacher Web Routes
 |--------------------------------------------------------------------------
 */
-Route::middleware(['auth', 'verified'])->prefix('teacher')->name('teacher.')->group(function () {
+Route::middleware(['auth', 'verified', 'role:teacher'])->prefix('teacher')->name('teacher.')->group(function () {
     Route::get('/calendar', fn() => Inertia::render('Teacher/TeacherCalendar'))->name('calendar');
     Route::get('/daily-calendar', fn() => Inertia::render('Teacher/TeachersDailyCalendar'))->name('daily-calendar');
-    Route::get('/classes', fn() => Inertia::render('Teacher/TeacherClasses'))->name('classes');
+});
+
+/*
+|--------------------------------------------------------------------------
+| Teacher API Routes (CSRF Exempt)
+|--------------------------------------------------------------------------
+*/
+Route::middleware(['auth', 'verified', 'role:teacher'])->prefix('api/teacher')->name('api.teacher.')->group(function () {
+    Route::get('classes', [\App\Http\Controllers\Teacher\TeacherClassController::class, 'index'])->name('classes.index');
+    Route::get('classes/calendar', [\App\Http\Controllers\Teacher\TeacherClassController::class, 'getCalendarClasses'])->name('classes.calendar');
+    Route::patch('classes/{id}/status', [\App\Http\Controllers\Teacher\TeacherClassController::class, 'updateStatus'])->name('classes.status');
+    Route::patch('classes/{id}/notes', [\App\Http\Controllers\Teacher\TeacherClassController::class, 'updateNotes'])->name('classes.notes');
+    Route::patch('classes/{id}/update', [\App\Http\Controllers\Teacher\TeacherClassController::class, 'update'])->name('classes.update');
+    
+    // Share the same update method with the admin route
+    Route::post('students/update-from-class/{studentName}', [AdminStudentController::class, 'updateFromClassStatus']);
 });
 
 /*
@@ -130,35 +143,118 @@ Route::middleware(['auth', 'verified'])->prefix('teacher')->name('teacher.')->gr
 | Admin Web Routes
 |--------------------------------------------------------------------------
 */
-Route::middleware(['auth', 'verified'])->prefix('admin')->name('admin.')->group(function () {
-    Route::get('/dashboard', fn() => Inertia::render('Dashboard'))->name('dashboard');
+Route::middleware(['auth', 'verified', 'role:admin'])->prefix('admin')->name('admin.')->group(function () {
+    Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
     Route::get('/teachers', fn() => Inertia::render('Admin/Teachers'))->name('teachers');
     Route::get('/students', fn() => Inertia::render('Admin/Students'))->name('students');
     Route::get('/classes', fn() => Inertia::render('Admin/AdminClasses'))->name('classes');
     Route::get('/calendar', fn() => Inertia::render('Admin/AdminCalendar'))->name('calendar');
     Route::get('/daily-calendar', fn() => Inertia::render('Admin/AdminDailyCalendar'))->name('daily-calendar');
-    Route::get('/promotional', fn() => Inertia::render('Admin/Promotional'))->name('promotional');
+    Route::get('/promotional', [AdminPromotionalController::class, 'index'])->name('promotional');
 });
 
 /*
 |--------------------------------------------------------------------------
-| Admin API Routes
+| Admin API Routes (Consolidated)
 |--------------------------------------------------------------------------
 */
-Route::middleware(['auth', 'verified'])->group(function () {
-    Route::apiResource('/api/admin/teachers', TeachersController::class);
-    Route::apiResource('/api/admin/students', StudentController::class);
-    Route::apiResource('/api/admin/classes', ClassController::class);
-    Route::apiResource('/api/admin/settings', SettingsController::class);
+Route::middleware(['web', 'auth', 'verified', 'role:admin'])->prefix('api/admin')->name('api.admin.')->group(function () {
+    // Teacher routes
+    Route::apiResource('teachers', AdminTeachersController::class);
+    Route::patch('teachers/{teacher}/status', [AdminTeachersController::class, 'updateStatus'])->name('teachers.status');
+    Route::get('active-teachers', [AdminTeachersController::class, 'getActiveTeachers'])->name('teachers.active');
+    
+    // Classes routes
+    Route::apiResource('classes', AdminClassController::class);
+
+    Route::get('calendar-classes', [AdminClassController::class, 'getCalendarClasses'])->name('classes.calendar');
+    
+    // Student routes - specific routes must come before apiResource
+    Route::get('students/stats', function() {
+        try {
+            $students = \App\Models\Admin\Student::all();
+            
+            // Return database values since they're now automatically kept in sync
+            return response()->json($students->map(function($student) {
+                return [
+                    'id' => $student->id,
+                    'name' => $student->name,
+                    'email' => $student->email,
+                    'purchased_class' => $student->purchased_class ?? 0,
+                    'completed' => $student->completed ?? 0,
+                    'cancelled' => $student->cancelled ?? 0,
+                    'free_classes' => $student->free_classes ?? 0,
+                    'free_class_consumed' => $student->free_class_consumed ?? 0,
+                    'absent_w_ntc_counted' => $student->absent_w_ntc_counted ?? 0,
+                    'class_left' => $student->class_left ?? 0
+                ];
+            }));
+        } catch (\Exception $e) {
+            return response()->json([
+                'error' => 'Failed to fetch student statistics',
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ], 500);
+        }
+    })->name('students.stats');
+    Route::post('students/{studentName}/update-stats', [AdminStudentController::class, 'updateFromClassStatus'])->name('students.update-stats');
+    Route::post('students/update-from-class/{studentName}', [AdminStudentController::class, 'updateFromClassStatus']);
+    Route::apiResource('students', AdminStudentController::class);
+    
+    // Dashboard stats routes
+    Route::get('dashboard/stats', [DashboardController::class, 'getStats'])->name('dashboard.stats');
+    Route::get('dashboard/stats/teacher/{teacherId}', [DashboardController::class, 'getTeacherStats'])->name('dashboard.teacher-stats');
+    
+    // Promotional posts routes
+    Route::apiResource('promotional', AdminPromotionalController::class);
+    Route::patch('promotional/{promotional}/toggle-status', [AdminPromotionalController::class, 'toggleStatus'])->name('promotional.toggle-status');
+});
+
+// Public API for promotional posts
+Route::get('/api/promotional/active', [AdminPromotionalController::class, 'getActivePosts'])->name('api.promotional.active');
+
+// Public announcements view route
+Route::get('/announcements', function () {
+    return Inertia::render('Announcements');
+})->name('announcements');
+
+// Redirect old route to new one
+Route::get('/promotions', function () {
+    return redirect()->route('announcements');
+})->name('promotions');
+
+/*
+|--------------------------------------------------------------------------
+| API Routes (Other)
+|--------------------------------------------------------------------------
+*/
+Route::middleware('auth:sanctum')->get('/api/user', function (Request $request) {
+    return $request->user();
 });
 
 /*
 |--------------------------------------------------------------------------
-| Teacher API Routes
+| Notification API Routes
 |--------------------------------------------------------------------------
 */
-Route::middleware(['auth', 'verified'])->group(function () {
-    Route::apiResource('/api/teacher/calendar', 'TeacherCalendarController');
-    Route::apiResource('/api/teacher/daily-calendar', 'TeacherDailyCalendarController');
-    Route::apiResource('/api/teacher/classes', 'TeacherClassesController');
+Route::middleware(['auth', 'verified'])->prefix('api/notifications')->name('api.notifications.')->group(function () {
+    Route::get('/', [App\Http\Controllers\NotificationController::class, 'index'])->name('index');
+    Route::post('{id}/read', [App\Http\Controllers\NotificationController::class, 'markAsRead'])->name('read');
+    Route::post('read-all', [App\Http\Controllers\NotificationController::class, 'markAllAsRead'])->name('read-all');
+    Route::get('unread-count', [App\Http\Controllers\NotificationController::class, 'getUnreadCount'])->name('unread-count');
+    Route::delete('{id}', [App\Http\Controllers\NotificationController::class, 'destroy'])->name('delete');
+    
+    // Test routes for development
+    Route::post('test', [App\Http\Controllers\TestNotificationController::class, 'createTestNotification'])->name('test');
+    Route::post('test-teacher-update', [App\Http\Controllers\TestNotificationController::class, 'createTeacherUpdateNotification'])->name('test-teacher-update');
 });
+
+/*
+|--------------------------------------------------------------------------
+| Additional Student API Routes
+|--------------------------------------------------------------------------
+*/
+Route::middleware(['web', 'auth'])->prefix('api')->group(function () {
+    Route::apiResource('students', \App\Http\Controllers\Admin\AdminStudentController::class);
+});
+

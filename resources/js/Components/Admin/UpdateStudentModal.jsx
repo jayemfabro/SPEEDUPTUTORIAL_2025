@@ -1,8 +1,66 @@
-import React from 'react';
-import { X } from 'lucide-react';
+import React, { useState } from 'react';
+import { X, ChevronDown, ChevronUp, User, Diamond, Users, Gem, Check } from 'lucide-react';
 import { Transition } from '@headlessui/react';
 
 const UpdateStudentModal = ({ isOpen, onClose, onSubmit, studentForm, onInputChange, isUpdating }) => {
+    const [isClassTypeOpen, setIsClassTypeOpen] = useState(false);
+
+    const classTypes = [
+        {
+            value: "Regular",
+            label: "Regular Class",
+            icon: User,
+            bgColor: "bg-navy-100",
+            textColor: "text-navy-900",
+            iconBgColor: "bg-navy-500",
+            iconTextColor: "text-white",
+        },
+        {
+            value: "Premium",
+            label: "Premium Class",
+            icon: Gem,
+            bgColor: "bg-amber-100",
+            textColor: "text-amber-900",
+            iconBgColor: "bg-amber-500",
+            iconTextColor: "text-white",
+        },
+        {
+            value: "Group",
+            label: "Group Class",
+            icon: Users,
+            bgColor: "bg-orange-100",
+            textColor: "text-orange-900",
+            iconBgColor: "bg-orange-500",
+            iconTextColor: "text-white",
+        },
+    ];
+
+    const getClassTypeOption = (type) => {
+        const option = classTypes.find((opt) => opt.value === type);
+        return (
+            option || {
+                bgColor: "bg-gray-100",
+                textColor: "text-gray-700",
+                iconBgColor: "bg-gray-500",
+                iconTextColor: "text-white",
+                icon: User,
+                label: "Regular Class",
+            }
+        );
+    };
+
+    const selectedClassType = getClassTypeOption(studentForm.class_type || 'Regular');
+
+    const handleClassTypeSelect = (classType) => {
+        const syntheticEvent = {
+            target: {
+                name: 'class_type',
+                value: classType
+            }
+        };
+        onInputChange(syntheticEvent);
+        setIsClassTypeOpen(false);
+    };
     return (
         <Transition show={isOpen} as={React.Fragment}>
             <div className="fixed inset-0 overflow-y-auto z-50">
@@ -82,6 +140,108 @@ const UpdateStudentModal = ({ isOpen, onClose, onSubmit, studentForm, onInputCha
                                         </div>
 
                                         <div className="sm:col-span-3">
+                                            <label htmlFor="class_type" className="block text-sm font-medium text-gray-700">
+                                                Class Type
+                                            </label>
+                                            <div className="mt-1 relative">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setIsClassTypeOpen(!isClassTypeOpen)}
+                                                    className={`w-full text-left px-3 py-2 text-sm font-medium rounded-md transition-all duration-200 flex items-center justify-between ${
+                                                        isClassTypeOpen
+                                                            ? "bg-orange-50 border border-orange-200 text-navy-700"
+                                                            : "bg-white border border-gray-300 text-navy-700 hover:bg-gray-50 shadow-sm"
+                                                    }`}
+                                                >
+                                                    <div className="flex items-center">
+                                                        {studentForm.class_type ? (
+                                                            <>
+                                                                <span className={`mr-2 ${selectedClassType.iconBgColor} rounded-full p-1`}>
+                                                                    {React.createElement(selectedClassType.icon, {
+                                                                        className: `h-4 w-4 ${selectedClassType.iconTextColor}`,
+                                                                    })}
+                                                                </span>
+                                                                <span className="truncate">
+                                                                    {selectedClassType.label}
+                                                                </span>
+                                                            </>
+                                                        ) : (
+                                                            <span className="text-gray-500">
+                                                                Select Class Type
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                    {isClassTypeOpen ? (
+                                                        <ChevronUp className="h-4 w-4" />
+                                                    ) : (
+                                                        <ChevronDown className="h-4 w-4" />
+                                                    )}
+                                                </button>
+
+                                                {isClassTypeOpen && (
+                                                    <div className="absolute z-10 mt-1 w-full min-w-[16rem] rounded-lg border border-gray-200 bg-white shadow-lg overflow-visible">
+                                                        <div className="max-h-60 overflow-y-auto">
+                                                            <div className="p-2 space-y-1">
+                                                                {classTypes.map((type) => {
+                                                                    const isSelected = studentForm.class_type === type.value;
+                                                                    return (
+                                                                        <button
+                                                                            key={type.value}
+                                                                            type="button"
+                                                                            className={`w-full rounded-md px-3 py-2 text-left text-sm transition-all duration-200 flex items-center ${
+                                                                                isSelected
+                                                                                    ? "bg-navy-600 text-white"
+                                                                                    : `${type.bgColor} ${type.textColor} hover:bg-opacity-80`
+                                                                            }`}
+                                                                            onClick={() => handleClassTypeSelect(type.value)}
+                                                                        >
+                                                                            <span className={`mr-2 ${
+                                                                                isSelected
+                                                                                    ? "bg-white bg-opacity-20"
+                                                                                    : type.iconBgColor
+                                                                            } rounded-full p-1`}>
+                                                                                {React.createElement(type.icon, {
+                                                                                    className: `h-4 w-4 ${
+                                                                                        isSelected
+                                                                                            ? "text-white"
+                                                                                            : type.iconTextColor
+                                                                                    }`,
+                                                                                })}
+                                                                            </span>
+                                                                            <span className="flex-1">
+                                                                                {type.label}
+                                                                            </span>
+                                                                            {isSelected && (
+                                                                                <Check className="h-4 w-4 ml-2 text-white" />
+                                                                            )}
+                                                                        </button>
+                                                                    );
+                                                                })}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        <div className="sm:col-span-3">
+                                            <label htmlFor="purchased_class" className="block text-sm font-medium text-gray-700">
+                                                Purchased Class
+                                            </label>
+                                            <div className="mt-1">
+                                                <input
+                                                    type="text"
+                                                    name="purchased_class"
+                                                    id="purchased_class"
+                                                    value={studentForm.purchased_class || ''}
+                                                    onChange={onInputChange}
+                                                    placeholder="Enter purchased class details"
+                                                    className="shadow-sm focus:ring-orange-500 focus:border-orange-500 block w-full sm:text-sm border-gray-300 rounded-md"
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <div className="sm:col-span-3">
                                             <label htmlFor="phone" className="block text-sm font-medium text-gray-700">
                                                 Phone
                                             </label>
@@ -154,23 +314,6 @@ const UpdateStudentModal = ({ isOpen, onClose, onSubmit, studentForm, onInputCha
                                                     value={studentForm.courses}
                                                     onChange={onInputChange}
                                                     placeholder="e.g., Mathematics, Physics, English"
-                                                    className="shadow-sm focus:ring-orange-500 focus:border-orange-500 block w-full sm:text-sm border-gray-300 rounded-md"
-                                                />
-                                            </div>
-                                        </div>
-
-                                        <div className="sm:col-span-6">
-                                            <label htmlFor="image" className="block text-sm font-medium text-gray-700">
-                                                Profile Image URL (optional)
-                                            </label>
-                                            <div className="mt-1">
-                                                <input
-                                                    type="text"
-                                                    name="image"
-                                                    id="image"
-                                                    value={studentForm.image || ''}
-                                                    onChange={onInputChange}
-                                                    placeholder="Leave blank for default image"
                                                     className="shadow-sm focus:ring-orange-500 focus:border-orange-500 block w-full sm:text-sm border-gray-300 rounded-md"
                                                 />
                                             </div>

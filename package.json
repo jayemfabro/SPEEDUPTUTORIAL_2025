@@ -25,6 +25,10 @@
     "dependencies": {
         "date-fns": "^4.1.0",
         "framer-motion": "^12.18.1",
-        "lucide-react": "^0.519.0"
+        "html2pdf.js": "^0.10.3",
+        "laravel-echo": "^2.1.6",
+        "lucide-react": "^0.519.0",
+        "pusher-js": "^8.4.0",
+        "react-toastify": "^11.0.5"
     }
 }

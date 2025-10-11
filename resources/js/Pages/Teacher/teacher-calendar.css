@@ -1,0 +1,53 @@
+/* Teacher Calendar Specific Styles */
+/* Group class card styling - matching Legend.jsx */
+.group-class-card {
+  background-color: rgba(74, 151, 130, 0.15) !important; /* Light teal background based on #4A9782 */
+  position: relative;
+  box-shadow: 0 1px 2px rgba(74, 151, 130, 0.2) !important;
+  border-width: 1px !important; 
+  border-style: solid !important;
+  border-color: #4A9782 !important; /* Teal border from Legend.jsx */
+  color: #1e293b !important; /* Dark slate color for text */
+}
+
+/* Hover effect for group class cards */
+.group-class-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 5px rgba(74, 151, 130, 0.3) !important;
+}
+
+/* Premium class styling - matching Legend.jsx */
+.premium-class-card {
+  background-color: rgba(251, 191, 36, 0.15) !important; /* Light amber background */
+  position: relative;
+  box-shadow: 0 1px 2px rgba(251, 191, 36, 0.2) !important;
+  border-width: 1px !important;
+  border-style: solid !important;
+  border-color: #f59e0b !important; /* Orange/amber border from Legend.jsx */
+  color: #78350f !important; /* Dark amber color for text */
+}
+
+/* Hover effect for premium class cards */
+.premium-class-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 5px rgba(251, 191, 36, 0.3) !important;
+}
+
+/* Regular class styling - matching Legend.jsx */
+.regular-class-card {
+  background-color: rgba(100, 116, 139, 0.15) !important; /* Light slate background */
+  position: relative;
+  box-shadow: 0 1px 2px rgba(100, 116, 139, 0.2) !important;
+  border-width: 1px !important;
+  border-style: solid !important;
+  border-color: #0f172a !important; /* Navy/slate border from Legend.jsx */
+  color: #0f172a !important; /* Dark slate color for text */
+}
+
+/* Hover effect for regular class cards */
+.regular-class-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 5px rgba(100, 116, 139, 0.3) !important;
+}
+
+/* Status background colors will be provided inline in the JSX for consistency */

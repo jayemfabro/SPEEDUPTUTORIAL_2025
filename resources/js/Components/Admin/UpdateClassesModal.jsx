@@ -1,4 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
+import { Transition } from "@headlessui/react";
+import axios from "axios";
 import {
     X,
     ChevronDown,
@@ -16,7 +18,6 @@ import {
     CalendarX,
     XCircle,
 } from "lucide-react";
-import { Transition } from "@headlessui/react";
 
 const UpdateClassesModal = ({
     isOpen,
@@ -30,6 +31,27 @@ const UpdateClassesModal = ({
     const dropdownRef = useRef(null);
     const timeDropdownRef = useRef(null);
     const classTypeDropdownRef = useRef(null);
+    const [teachers, setTeachers] = useState([]);
+    const [loading, setLoading] = useState(false);
+
+    // Fetch active teachers when modal opens
+    useEffect(() => {
+        if (isOpen) {
+            fetchActiveTeachers();
+        }
+    }, [isOpen]);
+
+    const fetchActiveTeachers = async () => {
+        try {
+            setLoading(true);
+            const response = await axios.get("/api/admin/active-teachers");
+            setTeachers(response.data);
+        } catch (error) {
+            console.error("Error fetching active teachers:", error);
+        } finally {
+            setLoading(false);
+        }
+    };
 
     const handleDropdownToggle = (dropdown) => {
         setDropdownOpen(dropdownOpen === dropdown ? null : dropdown);
@@ -41,7 +63,7 @@ const UpdateClassesModal = ({
     };
 
     const handleClassTypeSelect = (classType) => {
-        onInputChange({ target: { name: "class_type", value: classType } });
+        onInputChange({ target: { name: "classType", value: classType } });
         setDropdownOpen(null);
     };
 
@@ -64,6 +86,13 @@ const UpdateClassesModal = ({
     const timeOptions = generateTimeSlots();
 
     const statusOptions = [
+        {
+            value: "Valid for cancellation",
+            label: "Valid for cancellation",
+            icon: CheckCircle,
+            bgColor: "bg-green-100",
+            textColor: "text-green-900",
+        },
         {
             value: "FC not consumed (RG)",
             label: "FC not consumed (RG)",
@@ -110,12 +139,12 @@ const UpdateClassesModal = ({
             value: "Absent w/ntc-not counted (RG)",
             label: "Absent w/ntc-not counted (RG)",
             icon: CalendarX,
-            bgColor: "bg-orange-100",
-            textColor: "text-orange-900",
+            bgColor: "bg-gray-100",
+            textColor: "text-gray-900",
         },
         {
-            value: "Cancelled (RG)",
-            label: "Cancelled (RG)",
+                    value: "Cancelled (RG)",
+        label: "Cancelled (RG)",
             icon: XCircle,
             bgColor: "bg-red-100",
             textColor: "text-red-900",
@@ -242,7 +271,7 @@ const UpdateClassesModal = ({
                                         {/* Student Name */}
                                         <div className="sm:col-span-6">
                                             <label
-                                                htmlFor="student_name"
+                                                htmlFor="studentName"
                                                 className="block text-sm font-medium text-gray-700"
                                             >
                                                 Student Name
@@ -250,11 +279,11 @@ const UpdateClassesModal = ({
                                             <div className="mt-1">
                                                 <input
                                                     type="text"
-                                                    name="student_name"
-                                                    id="student_name"
+                                                    name="studentName"
+                                                    id="studentName"
                                                     required
                                                     value={
-                                                        classForm.student_name ||
+                                                        classForm.studentName ||
                                                         ""
                                                     }
                                                     onChange={onInputChange}
@@ -302,10 +331,10 @@ const UpdateClassesModal = ({
                                                 >
                                                     <div className="flex items-center">
                                                         <User className="h-4 w-4 mr-2 text-navy-400" />
-                                                        {classForm.teacher_name ? (
+                                                        {classForm.teacherName ? (
                                                             <span className="truncate">
                                                                 {
-                                                                    classForm.teacher_name
+                                                                    classForm.teacherName
                                                                 }
                                                             </span>
                                                         ) : (
@@ -330,7 +359,7 @@ const UpdateClassesModal = ({
                                                                     key="select-teacher"
                                                                     type="button"
                                                                     className={`w-full rounded-md px-3 py-2 text-left text-sm transition-all duration-200 flex items-center ${
-                                                                        !classForm.teacher_name
+                                                                        !classForm.teacherName
                                                                             ? "bg-navy-600 text-white"
                                                                             : "bg-gray-100 text-gray-500 hover:bg-gray-200"
                                                                     }`}
@@ -341,7 +370,15 @@ const UpdateClassesModal = ({
                                                                         onInputChange(
                                                                             {
                                                                                 target: {
-                                                                                    name: "teacher_name",
+                                                                                    name: "teacherName",
+                                                                                    value: "",
+                                                                                },
+                                                                            }
+                                                                        );
+                                                                        onInputChange(
+                                                                            {
+                                                                                target: {
+                                                                                    name: "teacher_id",
                                                                                     value: "",
                                                                                 },
                                                                             }
@@ -356,27 +393,22 @@ const UpdateClassesModal = ({
                                                                     </span>
                                                                     Select
                                                                     Teacher
-                                                                    {!classForm.teacher_name && (
+                                                                    {!classForm.teacherName && (
                                                                         <Check className="h-4 w-4 text-white ml-auto" />
                                                                     )}
                                                                 </button>
-                                                                {[
-                                                                    "Teacher 1",
-                                                                    "Teacher 2",
-                                                                    "Teacher 3",
-                                                                    "Teacher 4",
-                                                                    "Teacher 5",
-                                                                ].map(
+                                                                {teachers.length > 0 ? (
+                                                                    teachers.map(
                                                                     (
                                                                         teacher
                                                                     ) => {
                                                                         const isSelected =
-                                                                            classForm.teacher_name ===
-                                                                            teacher;
+                                                                            classForm.teacherName ===
+                                                                            teacher.name;
                                                                         return (
                                                                             <button
                                                                                 key={
-                                                                                    teacher
+                                                                                    teacher.id
                                                                                 }
                                                                                 type="button"
                                                                                 className={`w-full rounded-md px-3 py-2 text-left text-sm transition-all duration-200 flex items-center ${
@@ -391,8 +423,16 @@ const UpdateClassesModal = ({
                                                                                     onInputChange(
                                                                                         {
                                                                                             target: {
-                                                                                                name: "teacher_name",
-                                                                                                value: teacher,
+                                                                                                name: "teacherName",
+                                                                                                value: teacher.name,
+                                                                                            },
+                                                                                        }
+                                                                                    );
+                                                                                    onInputChange(
+                                                                                        {
+                                                                                            target: {
+                                                                                                name: "teacher_id",
+                                                                                                value: teacher.id,
                                                                                             },
                                                                                         }
                                                                                     );
@@ -404,7 +444,7 @@ const UpdateClassesModal = ({
                                                                                 <User className="h-4 w-4 mr-2 text-navy-400" />
                                                                                 <span className="flex-1">
                                                                                     {
-                                                                                        teacher
+                                                                                        teacher.name
                                                                                     }
                                                                                 </span>
                                                                                 {isSelected && (
@@ -412,7 +452,15 @@ const UpdateClassesModal = ({
                                                                                 )}
                                                                             </button>
                                                                         );
-                                                                    }
+                                                                    })
+                                                                ) : loading ? (
+                                                                    <div className="w-full p-3 text-center text-sm text-gray-500">
+                                                                        Loading teachers...
+                                                                    </div>
+                                                                ) : (
+                                                                    <div className="w-full p-3 text-center text-sm text-gray-500">
+                                                                        No active teachers found
+                                                                    </div>
                                                                 )}
                                                             </div>
                                                         </div>
@@ -424,7 +472,7 @@ const UpdateClassesModal = ({
                                         {/* Class Type */}
                                         <div className="sm:col-span-3">
                                             <label
-                                                htmlFor="class_type"
+                                                htmlFor="classType"
                                                 className="block text-sm font-medium text-gray-700"
                                             >
                                                 Class Type
@@ -466,24 +514,24 @@ const UpdateClassesModal = ({
                                                     }`}
                                                 >
                                                     <div className="flex items-center">
-                                                        {classForm.class_type ? (
+                                                        {classForm.classType ? (
                                                             <>
                                                                 <span
                                                                     className={`mr-2 ${
                                                                         getClassTypeOption(
-                                                                            classForm.class_type
+                                                                            classForm.classType
                                                                         )
                                                                             .bgColor
                                                                     } rounded-full p-1`}
                                                                 >
                                                                     {React.createElement(
                                                                         getClassTypeOption(
-                                                                            classForm.class_type
+                                                                            classForm.classType
                                                                         ).icon,
                                                                         {
                                                                             className: `h-4 w-4 ${
                                                                                 getClassTypeOption(
-                                                                                    classForm.class_type
+                                                                                    classForm.classType
                                                                                 )
                                                                                     .textColor
                                                                             }`,
@@ -494,9 +542,9 @@ const UpdateClassesModal = ({
                                                                     {classTypeOptions.find(
                                                                         (opt) =>
                                                                             opt.value ===
-                                                                            classForm.class_type
+                                                                            classForm.classType
                                                                     )?.label ||
-                                                                        classForm.class_type}
+                                                                        classForm.classType}
                                                                 </span>
                                                             </>
                                                         ) : (
@@ -529,7 +577,7 @@ const UpdateClassesModal = ({
                                                                     key="select-class-type"
                                                                     type="button"
                                                                     className={`w-full rounded-md px-3 py-2 text-left text-sm transition-all duration-200 flex items-center ${
-                                                                        !classForm.class_type
+                                                                        !classForm.classType
                                                                             ? "bg-navy-600 text-white"
                                                                             : "bg-gray-100 text-gray-500 hover:bg-gray-200"
                                                                     }`}
@@ -547,14 +595,14 @@ const UpdateClassesModal = ({
                                                                     </span>
                                                                     Select Class
                                                                     Type
-                                                                    {!classForm.class_type && (
+                                                                    {!classForm.classType && (
                                                                         <Check className="h-4 w-4 text-white ml-auto" />
                                                                     )}
                                                                 </button>
                                                                 {classTypeOptions.map(
                                                                     (type) => {
                                                                         const isSelected =
-                                                                            classForm.class_type ===
+                                                                            classForm.classType ===
                                                                             type.value;
                                                                         return (
                                                                             <button
@@ -782,192 +830,13 @@ const UpdateClassesModal = ({
                                                 )}
                                             </div>
                                         </div>
-                                        {/* Status */}
-                                        <div className="sm:col-span-3">
-                                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                                                Status
-                                            </label>
-                                            <div
-                                                className="relative w-full"
-                                                ref={dropdownRef}
-                                            >
-                                                <button
-                                                    type="button"
-                                                    onClick={() =>
-                                                        handleDropdownToggle(
-                                                            "status"
-                                                        )
-                                                    }
-                                                    onBlur={() =>
-                                                        setTimeout(
-                                                            () =>
-                                                                setDropdownOpen(
-                                                                    null
-                                                                ),
-                                                            200
-                                                        )
-                                                    }
-                                                    aria-haspopup="listbox"
-                                                    aria-expanded={
-                                                        dropdownOpen ===
-                                                        "status"
-                                                    }
-                                                    className={`w-full text-left px-3 py-2 text-sm font-medium rounded-md transition-all duration-200 flex items-center justify-between ${
-                                                        dropdownOpen ===
-                                                        "status"
-                                                            ? "bg-orange-50 border border-orange-200 text-navy-700"
-                                                            : "bg-white border border-gray-300 text-navy-700 hover:bg-gray-50 shadow-sm"
-                                                    }`}
-                                                >
-                                                    <div className="flex items-center">
-                                                        {classForm.status ? (
-                                                            <>
-                                                                <span
-                                                                    className={`mr-2 ${
-                                                                        getStatusOption(
-                                                                            classForm.status
-                                                                        )
-                                                                            .bgColor
-                                                                    } rounded-full p-1`}
-                                                                >
-                                                                    {React.createElement(
-                                                                        getStatusOption(
-                                                                            classForm.status
-                                                                        ).icon,
-                                                                        {
-                                                                            className: `h-4 w-4 ${
-                                                                                getStatusOption(
-                                                                                    classForm.status
-                                                                                )
-                                                                                    .textColor
-                                                                            }`,
-                                                                        }
-                                                                    )}
-                                                                </span>
-                                                                <span className="truncate">
-                                                                    {statusOptions.find(
-                                                                        (opt) =>
-                                                                            opt.value ===
-                                                                            classForm.status
-                                                                    )?.label ||
-                                                                        classForm.status}
-                                                                </span>
-                                                            </>
-                                                        ) : (
-                                                            <span className="text-gray-500">
-                                                                Select Status
-                                                            </span>
-                                                        )}
-                                                    </div>
-                                                    {dropdownOpen ===
-                                                    "status" ? (
-                                                        <ChevronUp className="h-4 w-4" />
-                                                    ) : (
-                                                        <ChevronDown className="h-4 w-4" />
-                                                    )}
-                                                </button>
-
-                                                {dropdownOpen === "status" && (
-                                                    <div className="absolute z-[60] mt-1 w-full min-w-[16rem] rounded-lg border border-gray-200 bg-white shadow-lg overflow-visible">
-                                                        <div className="max-h-60 overflow-y-auto">
-                                                            <div className="p-2 space-y-1">
-                                                                <button
-                                                                    key="select-status"
-                                                                    type="button"
-                                                                    className={`w-full rounded-md px-3 py-2 text-left text-sm transition-all duration-200 flex items-center ${
-                                                                        !classForm.status
-                                                                            ? "bg-navy-600 text-white"
-                                                                            : "bg-gray-100 text-gray-500 hover:bg-gray-200"
-                                                                    }`}
-                                                                    onClick={() => {
-                                                                        onInputChange(
-                                                                            {
-                                                                                target: {
-                                                                                    name: "status",
-                                                                                    value: "",
-                                                                                },
-                                                                            }
-                                                                        );
-                                                                        setDropdownOpen(
-                                                                            null
-                                                                        );
-                                                                    }}
-                                                                >
-                                                                    <span className="mr-2 rounded-full p-1">
-                                                                        <span className="h-4 w-4 opacity-0"></span>
-                                                                    </span>
-                                                                    Select
-                                                                    Status
-                                                                    {!classForm.status && (
-                                                                        <Check className="h-4 w-4 text-white ml-auto" />
-                                                                    )}
-                                                                </button>
-                                                                {statusOptions.map(
-                                                                    (
-                                                                        status
-                                                                    ) => {
-                                                                        const isSelected =
-                                                                            classForm.status ===
-                                                                            status.value;
-                                                                        return (
-                                                                            <button
-                                                                                key={
-                                                                                    status.value
-                                                                                }
-                                                                                type="button"
-                                                                                className={`w-full rounded-md px-3 py-2 text-left text-sm transition-all duration-200 flex items-center ${
-                                                                                    isSelected
-                                                                                        ? "bg-navy-600 text-white"
-                                                                                        : `${status.bgColor} ${status.textColor} hover:bg-opacity-80`
-                                                                                }`}
-                                                                                onClick={() => {
-                                                                                    onInputChange(
-                                                                                        {
-                                                                                            target: {
-                                                                                                name: "status",
-                                                                                                value: status.value,
-                                                                                            },
-                                                                                        }
-                                                                                    );
-                                                                                    setDropdownOpen(
-                                                                                        null
-                                                                                    );
-                                                                                }}
-                                                                            >
-                                                                                <span
-                                                                                    className={`mr-2 ${
-                                                                                        isSelected
-                                                                                            ? "bg-white bg-opacity-20"
-                                                                                            : ""
-                                                                                    } rounded-full p-1`}
-                                                                                >
-                                                                                    {React.createElement(
-                                                                                        status.icon,
-                                                                                        {
-                                                                                            className: `h-4 w-4 ${
-                                                                                                isSelected
-                                                                                                    ? "text-white"
-                                                                                                    : status.textColor
-                                                                                            }`,
-                                                                                        }
-                                                                                    )}
-                                                                                </span>
-                                                                                {
-                                                                                    status.label
-                                                                                }
-                                                                                {isSelected && (
-                                                                                    <Check className="h-4 w-4 ml-auto text-white" />
-                                                                                )}
-                                                                            </button>
-                                                                        );
-                                                                    }
-                                                                )}
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </div>
+                                        {/* Hidden Status Input - Default to "valid for cancellation" */}
+                                        <input
+                                            type="hidden"
+                                            name="status"
+                                            value={classForm.status || "Valid for cancellation"}
+                                            onChange={onInputChange}
+                                        />
                                     </div>
                                 </div>
                                 <div className="bg-gray-50 px-6 py-4 sm:px-6 sm:flex sm:flex-row-reverse rounded-b-lg">

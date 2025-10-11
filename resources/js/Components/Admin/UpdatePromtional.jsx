@@ -31,7 +31,7 @@ export default function UpdatePromotional({
         description: post.description || '',
         status: post.status || 'draft',
         expires_at: post.expires_at ? post.expires_at.split(' ')[0] : '',
-        image: post.image_path || null
+        image: post.imagePath || null
       });
     }
   }, [post]);
@@ -247,15 +247,14 @@ export default function UpdatePromotional({
 
                     <div className="sm:col-span-3">
                       <label htmlFor="expires_at" className="block text-sm font-medium text-gray-700">
-                        Expiry Date <span className="text-red-500">*</span>
+                        Expiry Date
                       </label>
                       <div className="mt-1 relative rounded-md shadow-sm">
                         <input
                           type="date"
                           name="expires_at"
                           id="expires_at"
-                          required
-                          value={localData.expires_at}
+                          value={localData.expires_at || ""}
                           min={new Date().toISOString().split('T')[0]}
                           onChange={handleInputChange}
                           className="shadow-sm focus:ring-orange-500 focus:border-orange-500 block w-full sm:text-sm border-gray-300 rounded-md pl-3 pr-10 py-2"

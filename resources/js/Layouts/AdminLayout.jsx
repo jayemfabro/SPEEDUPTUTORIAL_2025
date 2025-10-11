@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
-import { Link, usePage } from "@inertiajs/react";
+import { Link, usePage, router } from "@inertiajs/react";
 import ReactDOM from "react-dom";
+import NotificationBell from "../Components/NotificationBell";
 import {
     LayoutDashboard,
     Users,
@@ -84,7 +85,6 @@ export default function AdminLayout({ header, children }) {
         return () => window.removeEventListener('resize', handleResize);
     }, []);
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-    const [isNotificationDropdownOpen, setIsNotificationDropdownOpen] = useState(false);
     const [imageError, setImageError] = useState(false);
 
     const toggleSidebar = () => {
@@ -174,7 +174,7 @@ export default function AdminLayout({ header, children }) {
                         />
                         <MenuItem
                             icon={Calendar}
-                            text={isSidebarCollapsed ? '' : "Daily Calendar"}
+                            text={isSidebarCollapsed ? '' : "Weekly Class Schedule"}
                             href={route("admin.daily-calendar")}
                             active={route().current("admin.daily-calendar")}
                             className={isSidebarCollapsed ? 'justify-center' : ''}
@@ -214,99 +214,14 @@ export default function AdminLayout({ header, children }) {
 
                     {/* User info */}
                     <div className="relative ml-4 flex items-center space-x-4">
-                        <div className="relative">
-                            <button
-                                onClick={() => setIsNotificationDropdownOpen(!isNotificationDropdownOpen)}
-                                className="text-gray-300 hover:text-orange-400 font-medium flex items-center space-x-1 relative group focus:outline-none"
-                            >
-                                <div className="p-2 bg-navy-600 rounded-full group-hover:bg-navy-500 transition-all duration-200">
-                                    <Bell className="h-5 w-5" />
-                                </div>
-                                <span className="absolute -top-1 -right-1 bg-orange-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center shadow-md">3</span>
-                            </button>
-                            
-                            {/* Notification Dropdown Menu - Using React Portal */}
-                            {isNotificationDropdownOpen && ReactDOM.createPortal(
-                                <>
-                                    {/* Backdrop overlay */}
-                                    <div 
-                                        onClick={() => setIsNotificationDropdownOpen(false)}
-                                        style={{
-                                            position: 'fixed',
-                                            top: 0,
-                                            left: 0,
-                                            right: 0,
-                                            bottom: 0,
-                                            backgroundColor: 'rgba(0,0,0,0.1)',
-                                            zIndex: 9998
-                                        }}
-                                    />
-                                    
-                                    {/* Dropdown content */}
-                                    <div 
-                                        style={{
-                                            position: 'fixed',
-                                            top: '80px',
-                                            right: '20px',
-                                            width: '20rem',
-                                            zIndex: 9999,
-                                            boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.3)'
-                                        }}
-                                        className="bg-white rounded-lg overflow-hidden"
-                                    >
-                                        <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
-                                            <h3 className="font-semibold text-gray-800">Notifications</h3>
-                                        </div>
-                                        <div className="max-h-80 overflow-y-auto">
-                                            <a href="#" className="block px-4 py-3 hover:bg-gray-50 transition-colors border-b border-gray-100">
-                                                <div className="flex items-start">
-                                                    <div className="flex-shrink-0 bg-blue-100 rounded-full p-2">
-                                                        <Users className="h-4 w-4 text-blue-600" />
-                                                    </div>
-                                                    <div className="ml-3 w-full">
-                                                        <p className="text-sm font-medium text-gray-900">New student added to your class</p>
-                                                        <p className="text-xs text-gray-500 mt-1">2 hours ago</p>
-                                                    </div>
-                                                </div>
-                                            </a>
-                                            <a href="#" className="block px-4 py-3 hover:bg-gray-50 transition-colors border-b border-gray-100">
-                                                <div className="flex items-start">
-                                                    <div className="flex-shrink-0 bg-green-100 rounded-full p-2">
-                                                        <Calendar className="h-4 w-4 text-green-600" />
-                                                    </div>
-                                                    <div className="ml-3 w-full">
-                                                        <p className="text-sm font-medium text-gray-900">Faculty meeting rescheduled</p>
-                                                        <p className="text-xs text-gray-500 mt-1">Yesterday</p>
-                                                    </div>
-                                                </div>
-                                            </a>
-                                            <a href="#" className="block px-4 py-3 hover:bg-gray-50 transition-colors">
-                                                <div className="flex items-start">
-                                                    <div className="flex-shrink-0 bg-red-100 rounded-full p-2">
-                                                        <BookOpen className="h-4 w-4 text-red-600" />
-                                                    </div>
-                                                    <div className="ml-3 w-full">
-                                                        <p className="text-sm font-medium text-gray-900">Reminder: Grades submission deadline</p>
-                                                        <p className="text-xs text-gray-500 mt-1">2 days ago</p>
-                                                    </div>
-                                                </div>
-                                            </a>
-                                        </div>
-                                        <div className="px-4 py-2 border-t border-gray-100 bg-gray-50">
-                                            <a href="/teacher/notifications" className="text-sm text-orange-500 hover:text-orange-600 font-medium">View all notifications</a>
-                                        </div>
-                                    </div>
-                                </>,
-                                document.body
-                            )}
-                        </div>
+                        <NotificationBell />
                         <button
                             onClick={() => setIsDropdownOpen(!isDropdownOpen)}
                             className="flex items-center space-x-2 focus:outline-none group"
                         >
-                            {user.image && !imageError ? (
+                            {user.profile_photo_url ? (
                                 <img
-                                    src={`/storage/${user.image}`}
+                                    src={user.profile_photo_url}
                                     alt={user.name}
                                     className="h-10 w-10 rounded-full object-cover border-2 border-orange-400 hover:border-orange-500 transition-colors shadow-md"
                                     onError={(e) => {
@@ -366,9 +281,9 @@ export default function AdminLayout({ header, children }) {
                                     className="py-2 bg-navy-800 rounded-lg border border-navy-600"
                                 >
                                     <div className="px-4 py-3 border-b border-navy-700">
-                                        {user.image && !imageError ? (
+                                        {user.profile_photo_url ? (
                                             <img
-                                                src={`/storage/${user.image}`}
+                                                src={user.profile_photo_url}
                                                 alt={user.name}
                                                 className="h-16 w-16 rounded-full object-cover border-2 border-orange-400 mx-auto mb-2 shadow-md"
                                                 onError={(e) => {
@@ -398,15 +313,13 @@ export default function AdminLayout({ header, children }) {
                                     </div>
                                     
                                     <div className="border-t border-navy-700 py-1">
-                                        <Link
-                                            href={route('logout')}
-                                            method="post"
-                                            as="button"
+                                        <button
+                                            onClick={() => router.post(route('logout'))}
                                             className="flex w-full items-center px-4 py-2 text-sm text-orange-400 hover:bg-navy-700 hover:text-orange-500"
                                         >
                                             <LogOut className="h-4 w-4 mr-2" />
                                             Log Out
-                                        </Link>
+                                        </button>
                                     </div>
                                 </div>
                             </>,

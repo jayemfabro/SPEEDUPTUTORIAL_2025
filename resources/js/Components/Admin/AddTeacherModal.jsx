@@ -16,6 +16,18 @@ const AddTeacherModal = ({
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [passwordsMatch, setPasswordsMatch] = useState(true);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
+    // Reset form when modal opens/closes
+    useEffect(() => {
+        if (!isOpen) {
+            setPassword('');
+            setConfirmPassword('');
+            setPreviewImage(null);
+            setPasswordsMatch(true);
+            setIsSubmitting(false);
+        }
+    }, [isOpen]);
 
     useEffect(() => {
         // Validate passwords match when either field changes
@@ -26,15 +38,38 @@ const AddTeacherModal = ({
         }
     }, [password, confirmPassword]);
 
-    const handleSubmit = (e) => {
+    const handleSubmit = async (e) => {
         e.preventDefault();
+        
         if (password !== confirmPassword) {
             setPasswordsMatch(false);
             return;
         }
-        // Add password to the form data before submission
-        const formData = { ...teacherForm, password };
-        onSubmit({ ...e, target: { ...e.target, value: formData } });
+
+        if (isSubmitting) return;
+        
+        setIsSubmitting(true);
+        
+        try {
+            // Create form data object
+            const formData = {
+                ...teacherForm,
+                password: password
+            };
+            
+            // Call the onSubmit function passed from parent
+            await onSubmit(formData);
+            
+            // Reset form on success
+            setPassword('');
+            setConfirmPassword('');
+            setPreviewImage(null);
+            setPasswordsMatch(true);
+        } catch (error) {
+            console.error('Error submitting form:', error);
+        } finally {
+            setIsSubmitting(false);
+        }
     };
 
     const handleImageChange = (e) => {
@@ -150,7 +185,7 @@ const AddTeacherModal = ({
                                             <div className="flex-1 space-y-4">
                                                 <div>
                                                     <label
-                                                        htmlFor="first_name"
+                                                        htmlFor="firstName"
                                                         className="block text-sm font-medium text-gray-700"
                                                     >
                                                         First Name *
@@ -158,11 +193,11 @@ const AddTeacherModal = ({
                                                     <div className="mt-1">
                                                         <input
                                                             type="text"
-                                                            name="first_name"
-                                                            id="first_name"
+                                                            name="firstName"
+                                                            id="firstName"
                                                             required
                                                             value={
-                                                                teacherForm.first_name ||
+                                                                teacherForm.firstName ||
                                                                 ""
                                                             }
                                                             onChange={onInputChange}
@@ -173,7 +208,7 @@ const AddTeacherModal = ({
 
                                                 <div>
                                                     <label
-                                                        htmlFor="middle_name"
+                                                        htmlFor="middleName"
                                                         className="block text-sm font-medium text-gray-700"
                                                     >
                                                         Middle Name
@@ -181,10 +216,10 @@ const AddTeacherModal = ({
                                                     <div className="mt-1">
                                                         <input
                                                             type="text"
-                                                            name="middle_name"
-                                                            id="middle_name"
+                                                            name="middleName"
+                                                            id="middleName"
                                                             value={
-                                                                teacherForm.middle_name ||
+                                                                teacherForm.middleName ||
                                                                 ""
                                                             }
                                                             onChange={onInputChange}
@@ -195,7 +230,7 @@ const AddTeacherModal = ({
 
                                                 <div>
                                                     <label
-                                                        htmlFor="last_name"
+                                                        htmlFor="lastName"
                                                         className="block text-sm font-medium text-gray-700"
                                                     >
                                                         Last Name *
@@ -203,11 +238,11 @@ const AddTeacherModal = ({
                                                     <div className="mt-1">
                                                         <input
                                                             type="text"
-                                                            name="last_name"
-                                                            id="last_name"
+                                                            name="lastName"
+                                                            id="lastName"
                                                             required
                                                             value={
-                                                                teacherForm.last_name ||
+                                                                teacherForm.lastName ||
                                                                 ""
                                                             }
                                                             onChange={onInputChange}
@@ -383,18 +418,19 @@ const AddTeacherModal = ({
                                 <div className="bg-gray-50 px-6 py-4 sm:px-6 sm:flex sm:flex-row-reverse">
                                     <button
                                         type="submit"
-                                        disabled={!passwordsMatch || !password || !confirmPassword}
+                                        disabled={!passwordsMatch || !password || !confirmPassword || isSubmitting}
                                         className={`w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 text-base font-medium text-white focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500 sm:ml-3 sm:w-auto sm:text-sm transition-all duration-200 ${
-                                            !passwordsMatch || !password || !confirmPassword
+                                            !passwordsMatch || !password || !confirmPassword || isSubmitting
                                                 ? 'bg-gray-400 cursor-not-allowed'
                                                 : 'bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700'
                                         }`}
                                     >
-                                        Add Teacher
+                                        {isSubmitting ? 'Adding...' : 'Add Teacher'}
                                     </button>
                                     <button
                                         type="button"
                                         onClick={onClose}
+                                        disabled={isSubmitting}
                                         className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm transition-colors duration-200"
                                     >
                                         Cancel

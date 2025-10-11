@@ -13,8 +13,17 @@ return new class extends Migration
     {
         Schema::create('users', function (Blueprint $table) {
             $table->id();
-            $table->string('name');
+            $table->string('name')->nullable();
+            $table->string('first_name')->nullable();
+            $table->string('middle_name')->nullable();
+            $table->string('last_name')->nullable();
+            $table->string('username')->unique()->nullable();
             $table->string('email')->unique();
+            $table->string('phone')->nullable();
+            $table->date('birthdate')->nullable();
+            $table->string('image')->nullable();
+            $table->enum('role', ['admin', 'teacher'])->default('teacher');
+            $table->enum('status', ['active', 'inactive'])->default('active');
             $table->timestamp('email_verified_at')->nullable();
             $table->string('password');
             $table->rememberToken();
@@ -40,6 +49,7 @@ return new class extends Migration
     /**
      * Reverse the migrations.
      */
+    
     public function down(): void
     {
         Schema::dropIfExists('users');

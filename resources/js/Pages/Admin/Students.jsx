@@ -5,6 +5,9 @@ import { motion, AnimatePresence } from "framer-motion";
 import AddStudentModal from "@/Components/Admin/AddStudentModal";
 import UpdateStudentModal from "@/Components/Admin/UpdateStudentModal";
 import { Transition } from "@headlessui/react";
+import axios from "axios";
+import { toast, ToastContainer } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 import {
     PlusCircle,
     Search,
@@ -20,108 +23,436 @@ export default function Students() {
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
     const [searchQuery, setSearchQuery] = useState("");
-    const [notification, setNotification] = useState(null);
     const [currentStudent, setCurrentStudent] = useState(null);
 
-    // Mock data for students
-    const [students, setStudents] = useState([
-        {
-            id: 1,
-            name: "Alex Johnson",
-            email: "alex.johnson@example.com",
-            phone: "+1 (555) 123-4567",
-            grade: "10th Grade",
-            courses: ["Mathematics", "Physics"],
-            status: "Active",
-            image: "https://randomuser.me/api/portraits/men/32.jpg",
-        },
-        {
-            id: 2,
-            name: "Maria Garcia",
-            email: "maria.garcia@example.com",
-            phone: "+1 (555) 987-6543",
-            grade: "11th Grade",
-            courses: ["English", "History"],
-            status: "Active",
-            image: "https://randomuser.me/api/portraits/women/44.jpg",
-        },
-        {
-            id: 3,
-            name: "James Wilson",
-            email: "james.wilson@example.com",
-            phone: "+1 (555) 456-7890",
-            grade: "9th Grade",
-            courses: ["Biology", "Chemistry"],
-            status: "Inactive",
-            image: "https://randomuser.me/api/portraits/men/22.jpg",
-        },
-    ]);
+    // Students data
+    const [students, setStudents] = useState([]);
+    
+    // Bulk delete functionality
+    const [selectedStudents, setSelectedStudents] = useState([]);
+    const [isDeleting, setIsDeleting] = useState(false);
+
+    // Add state for all classes
+    const [allClasses, setAllClasses] = useState([]);
+
+    // Get class type badge class with colors matching AdminClasses
+    const getClassTypeBadgeClass = (type) => {
+        switch (type?.toLowerCase()) {
+            case "premium":
+                return "bg-orange-500 text-white border border-orange-600 px-3 py-1 text-xs font-semibold rounded-full inline-block min-w-[80px] text-center";
+            case "group":
+                return "bg-[#4A9782] text-white border border-[#4A9782] px-3 py-1 text-xs font-semibold rounded-full inline-block min-w-[80px] text-center";
+            case "regular":
+            default:
+                return "bg-navy-500 text-white border border-blue-700 px-3 py-1 text-xs font-semibold rounded-full inline-block min-w-[80px] text-center";
+        }
+    };
 
     // Form state for student data
     const [studentForm, setStudentForm] = useState({
         name: "",
         email: "",
-        phone: "",
-        grade: "",
-        courses: [],
-        status: "Active",
-        image: "",
+        purchased_class_regular: 0,
+        purchased_class_premium: 0,
+        purchased_class_group: 0,
+        class_left: 0,
+        completed: 0,
+        cancelled: 0,
+        free_classes: 0,
+        free_class_consumed: 0,
+        absent_w_ntc_counted: 0,
+        absent_w_ntc_not_counted: 0,
+        absent_without_notice: 0,
     });
 
-    // Show notification
-    const showNotification = (message, type = "success") => {
-        setNotification({ message, type });
-        setTimeout(() => setNotification(null), 5000);
+    // Load students data
+    const fetchStudents = async () => {
+        try {
+            const response = await axios.get('/api/admin/students');
+            const rawStudents = response.data || [];
+            
+            // Apply computation logic to all students to ensure data consistency
+            const computedStudents = rawStudents.map(student => {
+                const purchasedClass = (student.purchased_class_regular || 0) + (student.purchased_class_premium || 0) + (student.purchased_class_group || 0);
+                const completed = student.completed || 0;
+                const absentCounted = student.absent_w_ntc_counted || 0;
+                const absentWithoutNotice = student.absent_without_notice || 0;
+                const freeClassConsumed = student.free_class_consumed || 0;
+                // Recalculate class_left based on the formula: total purchased - completed - absent_counted - absent_without_notice - free_class_consumed
+                const classLeft = Math.max(0, purchasedClass - completed - absentCounted - absentWithoutNotice - freeClassConsumed);
+                
+                // Calculate free classes: cancelled classes add to free classes, consumed classes reduce free classes
+                let freeClasses = (student.free_classes || 0);
+                
+                const computedStudent = {
+                    ...student,
+                    class_left: classLeft,
+                    free_classes: Math.max(0, freeClasses)
+                };
+                
+                return computedStudent;
+            });
+            
+            setStudents(computedStudents);
+
+            // Debug log to check students data
+            console.log("Fetched students:", computedStudents);
+        } catch (error) {
+            console.error("Error fetching students:", error);
+            toast.error("Error loading students data.", {
+                position: "top-right",
+                autoClose: 5000,
+                hideProgressBar: false,
+                closeOnClick: true,
+                pauseOnHover: true,
+                draggable: true,
+            });
+            setStudents([]); // Set to empty array to prevent null/undefined errors
+        }
     };
+
+    // Fetch all classes for per-type usage
+    const fetchClasses = async () => {
+        try {
+            const response = await axios.get('/api/admin/classes');
+            setAllClasses(response.data || []);
+        } catch (error) {
+            console.error('Error fetching classes:', error);
+            setAllClasses([]);
+        }
+    };
+
+    useEffect(() => {
+        fetchStudents();
+        fetchClasses(); // Fetch classes on mount
+
+        // Set up automatic refresh when the page becomes visible again
+        const handleVisibilityChange = () => {
+            if (!document.hidden) {
+                fetchStudents();
+            }
+        };
+
+        // Set up periodic refresh every 10 seconds for testing
+        const intervalId = setInterval(() => {
+            fetchStudents();
+        }, 10000);
+
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+
+        // Listen for class updates from other pages
+        const handleClassUpdated = () => {
+            fetchStudents();
+            fetchClasses();
+        };
+        window.addEventListener('classUpdated', handleClassUpdated);
+
+        // Set up the global function after students state is available
+        window.updateStudentStats = async (studentName, statusChange) => {
+            try {
+                // Refresh the students data first to get latest state
+                await fetchStudents();
+                
+                // Find student by name from the latest students data
+                const response = await axios.get('/api/admin/students');
+                const currentStudents = response.data || [];
+                const student = currentStudents.find(s => s.name.toLowerCase() === studentName.toLowerCase());
+                
+                if (!student) {
+                    return;
+                }
+
+                let updatedData = { ...student };
+
+                // Apply computation based on status change
+                switch (statusChange.toLowerCase()) {
+                    case 'completed':
+                        updatedData.completed = (updatedData.completed || 0) + 1;
+                        updatedData.class_left = Math.max(0, (updatedData.class_left || 0) - 1);
+                        break;
+
+                    case 'cancelled':
+                        updatedData.cancelled = (updatedData.cancelled || 0) + 1;
+                        // Do NOT increment free_classes here
+                        break;
+
+                    case 'absent w/ntc counted':
+                        updatedData.absent_w_ntc_counted = (updatedData.absent_w_ntc_counted || 0) + 1;
+                        break;
+
+                    case 'absent w/ntc-not counted':
+                        updatedData.free_classes = (updatedData.free_classes || 0) + 1;
+                        break;
+
+                    case 'absent without notice':
+                        // +1 to absent without notice - class type will be handled by backend calculation
+                        updatedData.absent_without_notice = (updatedData.absent_without_notice || 0) + 1;
+                        break;
+
+                    case 'fc consumed':
+                    case 'free class consumed':
+                        updatedData.free_class_consumed = (updatedData.free_class_consumed || 0) + 1;
+                        updatedData.free_classes = Math.max(0, (updatedData.free_classes || 0) - 1);
+                        break;
+                }
+
+                // Recalculate class_left
+                const purchasedClass = updatedData.purchased_class || 0;
+                const completed = updatedData.completed || 0;
+                const absentCounted = updatedData.absent_w_ntc_counted || 0;
+                const absentWithoutNotice = updatedData.absent_without_notice || 0;
+                const freeClassConsumed = updatedData.free_class_consumed || 0;
+                
+                updatedData.class_left = Math.max(0, purchasedClass - completed - absentCounted - absentWithoutNotice - freeClassConsumed);
+
+                // Update in database
+                const updateResponse = await axios.put(`/api/admin/students/${student.id}`, updatedData);
+                const savedStudent = updateResponse.data;
+
+                // Force refresh the students list
+                await fetchStudents();
+
+                toast.success(`Student ${studentName} updated: ${statusChange}`, {
+                    position: "top-right",
+                    autoClose: 2000,
+                    hideProgressBar: false,
+                    closeOnClick: true,
+                    pauseOnHover: true,
+                    draggable: true,
+                });
+
+        
+
+                return savedStudent;
+            } catch (error) {
+                console.error(`Error updating student stats for ${studentName}:`, error);
+                toast.error(`Error updating student ${studentName}`, {
+                    position: "top-right",
+                    autoClose: 3000,
+                    hideProgressBar: false,
+                    closeOnClick: true,
+                    pauseOnHover: true,
+                    draggable: true,
+                });
+                throw error;
+            }
+        };
+
+        // Cleanup
+        return () => {
+            clearInterval(intervalId);
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+            window.removeEventListener('classUpdated', handleClassUpdated);
+            // Clean up global function
+            delete window.updateStudentStats;
+        };
+    }, []);
 
     // Handle input change for the form
     const handleInputChange = (e) => {
         const { name, value } = e.target;
-        setStudentForm((prev) => ({
-            ...prev,
-            [name]: value,
-        }));
+        setStudentForm((prev) => {
+            const result = computeStudentData(prev, name, value);
+            return result;
+        });
+    };
+
+    // Computation function for student data
+    const computeStudentData = (formData, fieldName, newValue) => {
+        const updatedForm = {
+            ...formData,
+            [fieldName]: newValue,
+        };
+
+        const toInt = (v) => parseInt(v) || 0;
+
+        // Cancelled: add to free_classes
+        if (fieldName === 'cancelled') {
+            const cancelled = toInt(newValue);
+            const previousCancelled = toInt(formData.cancelled);
+            if (cancelled > previousCancelled) {
+                updatedForm.free_classes = toInt(updatedForm.free_classes) + (cancelled - previousCancelled);
+            }
+        }
+
+        // FC Consumed: reduce free_classes
+        if (fieldName === 'free_class_consumed') {
+            const consumed = toInt(newValue);
+            const previousConsumed = toInt(formData.free_class_consumed);
+            if (consumed > previousConsumed) {
+                updatedForm.free_classes = Math.max(0, toInt(updatedForm.free_classes) - (consumed - previousConsumed));
+            }
+        }
+
+        // Absent w/ntc-not counted: add to free_classes
+        if (fieldName === 'absent_w_ntc_not_counted') {
+            const absentNotCounted = toInt(newValue);
+            const previousAbsentNotCounted = toInt(formData.absent_w_ntc_not_counted);
+            if (absentNotCounted > previousAbsentNotCounted) {
+                updatedForm.free_classes = toInt(updatedForm.free_classes) + (absentNotCounted - previousAbsentNotCounted);
+            }
+        }
+
+        // Class left: recalculate
+        const totalPurchased = toInt(updatedForm.purchased_class_regular) + toInt(updatedForm.purchased_class_premium) + toInt(updatedForm.purchased_class_group);
+        updatedForm.class_left = Math.max(
+            0,
+            totalPurchased
+            - toInt(updatedForm.completed)
+            - toInt(updatedForm.absent_w_ntc_counted)
+            - toInt(updatedForm.absent_without_notice)
+            - toInt(updatedForm.free_class_consumed)
+        );
+
+        return updatedForm;
     };
 
     // Handle form submission for adding a student
-    const handleSubmit = (e) => {
+    const handleSubmit = async (e) => {
         e.preventDefault();
-        const newStudent = {
-            ...studentForm,
-            id: Math.max(0, ...students.map((s) => s.id)) + 1,
-            courses: studentForm.courses
-                .split(",")
-                .map((course) => course.trim())
-                .filter(Boolean),
-        };
-
-        setStudents([...students, newStudent]);
-        setIsAddModalOpen(false);
-        showNotification("Student added successfully!");
+        try {
+            await axios.post('/api/admin/students', {
+                name: studentForm.name,
+                email: studentForm.email,
+                purchased_class_regular: studentForm.purchased_class_regular,
+                purchased_class_premium: studentForm.purchased_class_premium,
+                purchased_class_group: studentForm.purchased_class_group,
+                class_left: studentForm.class_left,
+                completed: studentForm.completed,
+                cancelled: studentForm.cancelled,
+                free_classes: studentForm.free_classes,
+                free_class_consumed: studentForm.free_class_consumed,
+                absent_w_ntc_counted: studentForm.absent_w_ntc_counted,
+                absent_w_ntc_not_counted: studentForm.absent_w_ntc_not_counted,
+                absent_without_notice: studentForm.absent_without_notice,
+            });
+            toast.success('Student added successfully!', {
+                position: "top-right",
+                autoClose: 3000,
+                hideProgressBar: false,
+                closeOnClick: true,
+                pauseOnHover: true,
+                draggable: true,
+            });
+            setIsAddModalOpen(false);
+            setStudentForm({
+                name: "",
+                email: "",
+                purchased_class_regular: 0,
+                purchased_class_premium: 0,
+                purchased_class_group: 0,
+                class_left: 0,
+                completed: 0,
+                cancelled: 0,
+                free_classes: 0,
+                free_class_consumed: 0,
+                absent_w_ntc_counted: 0,
+                absent_w_ntc_not_counted: 0,
+                absent_without_notice: 0,
+            });
+            // Refresh students list
+            fetchStudents();
+        } catch (error) {
+            console.error('Error adding student:', error);
+            toast.error(error.response?.data?.message || 'Failed to add student', {
+                position: "top-right",
+                autoClose: 5000,
+                hideProgressBar: false,
+                closeOnClick: true,
+                pauseOnHover: true,
+                draggable: true,
+            });
+        }
     };
 
     // Handle student update
-    const handleUpdateStudent = (e) => {
+    const handleUpdateStudent = async (e) => {
         e.preventDefault();
-        setStudents((prev) =>
-            prev.map((student) =>
-                student.id === currentStudent.id
-                    ? {
-                          ...studentForm,
-                          id: currentStudent.id,
-                          courses:
-                              typeof studentForm.courses === "string"
-                                  ? studentForm.courses
-                                        .split(",")
-                                        .map((course) => course.trim())
-                                        .filter(Boolean)
-                                  : studentForm.courses,
-                      }
-                    : student
-            )
-        );
-        setIsEditModalOpen(false);
-        showNotification("Student updated successfully!");
+        
+        try {
+            const updatedStudent = {
+                ...studentForm,
+                id: currentStudent.id,
+            };
+
+            // Make an API call to update the student in the database
+            const response = await axios.put(`/api/admin/students/${currentStudent.id}`, updatedStudent);
+            
+            // Use the returned data from the server
+            const savedStudent = response.data;
+
+            setStudents(prevStudents =>
+                prevStudents.map(student =>
+                    student.id === currentStudent.id ? savedStudent : student
+                )
+            );
+            
+            setIsEditModalOpen(false);
+            resetForm();
+            toast.success("Student updated successfully!", {
+                position: "top-right",
+                autoClose: 3000,
+                hideProgressBar: false,
+                closeOnClick: true,
+                pauseOnHover: true,
+                draggable: true,
+            });
+        } catch (error) {
+            console.error("Error updating student:", error);
+            toast.error("Error updating student. Please try again.", {
+                position: "top-right",
+                autoClose: 5000,
+                hideProgressBar: false,
+                closeOnClick: true,
+                pauseOnHover: true,
+                draggable: true,
+            });
+        }
+    };
+
+    // Function to update a student field with automatic computation
+    const updateStudentField = async (studentId, fieldName, newValue) => {
+        try {
+            // Find the student in current state
+            const student = students.find(s => s.id === studentId);
+            if (!student) {
+                throw new Error('Student not found');
+            }
+
+            // Compute the updated data
+            const updatedData = computeStudentData(student, fieldName, newValue);
+
+            // Update the student in the database
+            const response = await axios.put(`/api/admin/students/${studentId}`, updatedData);
+            const savedStudent = response.data;
+
+            // Update the students state
+            setStudents(prevStudents =>
+                prevStudents.map(s => s.id === studentId ? savedStudent : s)
+            );
+
+            toast.success("Student updated successfully with automatic computation!", {
+                position: "top-right",
+                autoClose: 3000,
+                hideProgressBar: false,
+                closeOnClick: true,
+                pauseOnHover: true,
+                draggable: true,
+            });
+
+            return savedStudent;
+        } catch (error) {
+            console.error("Error updating student field:", error);
+            toast.error("Error updating student. Please try again.", {
+                position: "top-right",
+                autoClose: 5000,
+                hideProgressBar: false,
+                closeOnClick: true,
+                pauseOnHover: true,
+                draggable: true,
+            });
+            throw error;
+        }
     };
 
     // Handle opening edit modal
@@ -129,20 +460,41 @@ export default function Students() {
         setCurrentStudent(student);
         setStudentForm({
             ...student,
-            courses: Array.isArray(student.courses)
-                ? student.courses.join(", ")
-                : student.courses || "",
         });
         setIsEditModalOpen(true);
     };
 
     // Handle student deletion
-    const handleDeleteStudent = () => {
-        setStudents((prev) =>
-            prev.filter((student) => student.id !== currentStudent.id)
-        );
-        setIsDeleteModalOpen(false);
-        showNotification("Student removed successfully!", "warning");
+    const handleDeleteStudent = async () => {
+        try {
+            // Make an API call to delete the student from the database
+            await axios.delete(`/api/admin/students/${currentStudent.id}`);
+            
+            setStudents(prevStudents => 
+                prevStudents.filter(student => student.id !== currentStudent.id)
+            );
+            
+            setIsDeleteModalOpen(false);
+            resetForm();
+            toast.success("Student removed successfully!", {
+                position: "top-right",
+                autoClose: 3000,
+                hideProgressBar: false,
+                closeOnClick: true,
+                pauseOnHover: true,
+                draggable: true,
+            });
+        } catch (error) {
+            console.error("Error deleting student:", error);
+            toast.error("Error deleting student. Please try again.", {
+                position: "top-right",
+                autoClose: 5000,
+                hideProgressBar: false,
+                closeOnClick: true,
+                pauseOnHover: true,
+                draggable: true,
+            });
+        }
     };
 
     // Open delete confirmation
@@ -156,11 +508,17 @@ export default function Students() {
         setStudentForm({
             name: "",
             email: "",
-            phone: "",
-            grade: "",
-            courses: "",
-            status: "Active",
-            image: "",
+            purchased_class_regular: 0,
+            purchased_class_premium: 0,
+            purchased_class_group: 0,
+            class_left: 0,
+            completed: 0,
+            cancelled: 0,
+            free_classes: 0,
+            free_class_consumed: 0,
+            absent_w_ntc_counted: 0,
+            absent_w_ntc_not_counted: 0,
+            absent_without_notice: 0,
         });
         setCurrentStudent(null);
     };
@@ -174,17 +532,286 @@ export default function Students() {
     // Filter students based on search query
     const filteredStudents = students.filter(
         (student) =>
-            student.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            student.grade.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            student.courses.some((course) =>
-                course.toLowerCase().includes(searchQuery.toLowerCase())
-            )
+            (student.name?.toLowerCase().includes(searchQuery.toLowerCase())) ||
+            ((student.purchased_class_regular || 0) + (student.purchased_class_premium || 0) + (student.purchased_class_group || 0)).toString().toLowerCase().includes(searchQuery.toLowerCase())
     );
+
+    // Before rendering table
+    console.log("Rendering students table, filteredStudents:", filteredStudents);
+
+    // Bulk delete functions
+    const handleSelectAll = (e) => {
+        if (e.target.checked) {
+            setSelectedStudents(filteredStudents.map(student => student.id));
+        } else {
+            setSelectedStudents([]);
+        }
+    };
+
+    const handleSelectStudent = (studentId) => {
+        setSelectedStudents(prev => {
+            if (prev.includes(studentId)) {
+                return prev.filter(id => id !== studentId);
+            } else {
+                return [...prev, studentId];
+            }
+        });
+    };
+
+    const handleBulkDelete = async () => {
+        if (selectedStudents.length === 0) return;
+
+        if (confirm(`Are you sure you want to delete ${selectedStudents.length} selected student(s)?`)) {
+            setIsDeleting(true);
+            try {
+                await Promise.all(
+                    selectedStudents.map(studentId => 
+                        axios.delete(`/api/admin/students/${studentId}`)
+                    )
+                );
+                
+                // Remove deleted students from state
+                setStudents(prev => prev.filter(student => !selectedStudents.includes(student.id)));
+                setSelectedStudents([]);
+                
+                toast.success(`${selectedStudents.length} student(s) deleted successfully!`, {
+                    position: "top-right",
+                    autoClose: 3000,
+                    hideProgressBar: false,
+                    closeOnClick: true,
+                    pauseOnHover: true,
+                    draggable: true,
+                });
+            } catch (error) {
+                console.error('Error deleting students:', error);
+                toast.error('Error deleting some students. Please try again.', {
+                    position: "top-right",
+                    autoClose: 5000,
+                    hideProgressBar: false,
+                    closeOnClick: true,
+                    pauseOnHover: true,
+                    draggable: true,
+                });
+            } finally {
+                setIsDeleting(false);
+            }
+        }
+    };
+
+    // Function to manually recompute all student data
+    const recomputeAllStudents = async () => {
+        try {
+            const updatedStudents = await Promise.all(
+                students.map(async (student) => {
+                    const totalPurchased = (student.purchased_class_regular || 0) + (student.purchased_class_premium || 0) + (student.purchased_class_group || 0);
+                    const completed = student.completed || 0;
+                    const absentCounted = student.absent_w_ntc_counted || 0;
+                    const absentWithoutNotice = student.absent_without_notice || 0;
+                    const freeClassConsumed = student.free_class_consumed || 0;
+                    
+                    // Recalculate class_left
+                    const classLeft = Math.max(0, totalPurchased - completed - absentCounted - absentWithoutNotice - freeClassConsumed);
+                    
+                    // For cancelled classes, they should add to free_classes
+                    // For free_class_consumed, they should reduce free_classes
+                    const adjustedFreeClasses = Math.max(0, (student.free_classes || 0));
+                    
+                    const updatedData = {
+                        ...student,
+                        class_left: classLeft,
+                        free_classes: adjustedFreeClasses
+                    };
+                    
+                    // Update in database
+                    try {
+                        const response = await axios.put(`/api/admin/students/${student.id}`, updatedData);
+                        return response.data;
+                    } catch (error) {
+                        console.error(`Error updating student ${student.id}:`, error);
+                        return updatedData; // Return local computation if API fails
+                    }
+                })
+            );
+            
+            setStudents(updatedStudents);
+            toast.success("All student data recomputed successfully!", {
+                position: "top-right",
+                autoClose: 3000,
+                hideProgressBar: false,
+                closeOnClick: true,
+                pauseOnHover: true,
+                draggable: true,
+            });
+        } catch (error) {
+            console.error("Error recomputing student data:", error);
+            toast.error("Error recomputing student data. Please try again.", {
+                position: "top-right",
+                autoClose: 5000,
+                hideProgressBar: false,
+                closeOnClick: true,
+                pauseOnHover: true,
+                draggable: true,
+            });
+        }
+    };
+
+    // Global function to update student stats when class status changes
+    // This can be called from other pages like AdminClasses
+    window.updateStudentStats = async (studentName, statusChange) => {
+        try {
+            // Find student by name
+            const student = students.find(s => s.name.toLowerCase() === studentName.toLowerCase());
+            if (!student) {
+                console.log(`Student ${studentName} not found`);
+                return;
+            }
+
+            let updatedData = { ...student };
+
+            // Apply computation based on status change
+            switch (statusChange.toLowerCase()) {
+                case 'completed':
+                    // +1 to completed and -1 to class left
+                    updatedData.completed = (updatedData.completed || 0) + 1;
+                    break;
+
+                case 'cancelled':
+                    // +1 to cancelled, -1 to class left
+                    updatedData.cancelled = (updatedData.cancelled || 0) + 1;
+                    // Do NOT increment free_classes here
+                    break;
+
+                case 'absent w/ntc counted':
+                    // +1 to absent w/ntc counted, -1 to class left
+                    updatedData.absent_w_ntc_counted = (updatedData.absent_w_ntc_counted || 0) + 1;
+                    break;
+
+                case 'absent w/ntc-not counted':
+                    // +1 to free class, -1 to class left
+                    updatedData.free_classes = (updatedData.free_classes || 0) + 1;
+                    break;
+
+                case 'absent without notice':
+                    // +1 to absent without notice - class type will be handled by backend calculation
+                    updatedData.absent_without_notice = (updatedData.absent_without_notice || 0) + 1;
+                    break;
+
+                case 'fc consumed':
+                case 'free class consumed':
+                    // +1 to free class consumed, -1 to free class
+                    updatedData.free_class_consumed = (updatedData.free_class_consumed || 0) + 1;
+                    updatedData.free_classes = Math.max(0, (updatedData.free_classes || 0) - 1);
+                    break;
+            }
+
+            // Recalculate class_left after all changes
+            const totalPurchased = (updatedData.purchased_class_regular || 0) + (updatedData.purchased_class_premium || 0) + (updatedData.purchased_class_group || 0);
+            const completed = updatedData.completed || 0;
+            const absentCounted = updatedData.absent_w_ntc_counted || 0;
+            const absentWithoutNotice = updatedData.absent_without_notice || 0;
+            const freeClassConsumed = updatedData.free_class_consumed || 0;
+            
+            // Class left = total purchased - completed - absent_w_ntc_counted - absent_without_notice - free_class_consumed
+            updatedData.class_left = Math.max(0, totalPurchased - completed - absentCounted - absentWithoutNotice - freeClassConsumed);
+
+            // Update in database
+            const response = await axios.put(`/api/admin/students/${student.id}`, updatedData);
+            const savedStudent = response.data;
+
+            // Update local state if this component is active
+            setStudents(prevStudents =>
+                prevStudents.map(s => s.id === student.id ? savedStudent : s)
+            );
+
+            console.log(`Updated student ${studentName} with ${statusChange}:`, savedStudent);
+            toast.success(`Student ${studentName} updated: ${statusChange}`, {
+                position: "top-right",
+                autoClose: 2000,
+                hideProgressBar: false,
+                closeOnClick: true,
+                pauseOnHover: true,
+                draggable: true,
+            });
+
+            return savedStudent;
+        } catch (error) {
+            console.error(`Error updating student stats for ${studentName}:`, error);
+            toast.error(`Error updating student ${studentName}`, {
+                position: "top-right",
+                autoClose: 3000,
+                hideProgressBar: false,
+                closeOnClick: true,
+                pauseOnHover: true,
+                draggable: true,
+            });
+            throw error;
+        }
+    };
+
+    // Helper to get used count for a student and class type
+    const getUsedCount = (student, type) => {
+        return allClasses.filter(
+            cls =>
+                cls.student_name === student.name &&
+                cls.class_type && cls.class_type.toLowerCase() === type &&
+                ["Completed", "Absent w/ntc counted", "FC consumed", "Absent Without Notice"].includes(cls.status)
+        ).length;
+    };
+
+    // Helper to get all stats for a student from allClasses
+    function getStudentStatsFromClasses(student, allClasses) {
+        const studentClasses = allClasses.filter(cls => cls.student_name === student.name);
+        const completed = studentClasses.filter(cls => cls.status === "Completed").length;
+        const absentWntcCounted = studentClasses.filter(cls => cls.status === "Absent w/ntc counted").length;
+        const absentWithoutNotice = studentClasses.filter(cls => cls.status === "Absent Without Notice").length;
+        const cancelled = studentClasses.filter(cls => cls.status === "Cancelled").length;
+        const absentWntcNotCounted = studentClasses.filter(cls => cls.status === "Absent w/ntc-not counted").length;
+        const fcConsumed = studentClasses.filter(cls => cls.status === "FC consumed").length;
+        
+        // Calculate remaining class types after deducting "Absent Without Notice" by class type
+        let remainingRegular = student.purchased_class_regular || 0;
+        let remainingPremium = student.purchased_class_premium || 0;
+        let remainingGroup = student.purchased_class_group || 0;
+        
+        // Deduct "Absent Without Notice" from respective class types
+        const absentWithoutNoticeClasses = studentClasses.filter(cls => cls.status === "Absent Without Notice");
+        absentWithoutNoticeClasses.forEach(cls => {
+            const classType = cls.class_type?.toLowerCase();
+            if (classType === 'regular') {
+                remainingRegular = Math.max(0, remainingRegular - 1);
+            } else if (classType === 'premium') {
+                remainingPremium = Math.max(0, remainingPremium - 1);
+            } else if (classType === 'group') {
+                remainingGroup = Math.max(0, remainingGroup - 1);
+            }
+        });
+        
+        const totalPurchased = remainingRegular + remainingPremium + remainingGroup;
+        
+        // Free classes: +1 for each Cancelled or Absent w/ntc-not counted, -1 for each FC consumed
+        const freeClasses = Math.max(0, cancelled + absentWntcNotCounted - fcConsumed);
+        // Class left: total remaining - completed - absentWntcCounted - fcConsumed
+        const classLeft = Math.max(0, totalPurchased - completed - absentWntcCounted - fcConsumed);
+        // Free class consumed: count of FC consumed
+        const freeClassConsumed = fcConsumed;
+        return {
+            completed,
+            absentWntcCounted,
+            absentWithoutNotice,
+            freeClasses,
+            classLeft,
+            freeClassConsumed,
+            // Return the adjusted class type counts for display
+            remainingRegular,
+            remainingPremium,
+            remainingGroup,
+        };
+    }
 
     return (
         <AdminLayout>
             <Head title="Students Management" />
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+            <div className="max-w-8xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
                 {/* Responsive Banner */}
                 <div className="relative rounded-xl overflow-hidden bg-gradient-to-r from-navy-800 to-navy-700 p-4 sm:p-6 md:p-8 mb-6 shadow-lg">
                     <div className="relative z-10">
@@ -218,7 +845,7 @@ export default function Students() {
                                 <input
                                     type="text"
                                     className="block w-full pl-10 pr-3 h-[42px] border border-gray-200 rounded-lg leading-5 bg-white placeholder-navy-400 focus:outline-none focus:ring-2 focus:ring-navy-500 focus:border-navy-500 text-sm"
-                                    placeholder="Search by name, grade, or course..."
+                                    placeholder="Search by name or purchased class..."
                                     value={searchQuery}
                                     onChange={(e) =>
                                         setSearchQuery(e.target.value)
@@ -234,156 +861,201 @@ export default function Students() {
                             <PlusCircle className="-ml-1 mr-2 h-5 w-5" />
                             Add Student
                         </button>
+
+                        {/* Bulk Delete Button */}
+                        {selectedStudents.length > 0 && (
+                            <button
+                                onClick={handleBulkDelete}
+                                disabled={isDeleting}
+                                className="w-full sm:w-auto inline-flex items-center justify-center px-5 py-2.5 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 transition-all duration-300 transform hover:scale-105 whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                <Trash2 className="-ml-1 mr-2 h-5 w-5" />
+                                {isDeleting ? 'Deleting...' : `Delete ${selectedStudents.length} Selected`}
+                            </button>
+                        )}
                     </div>
                 </div>
 
                 {/* Students Table */}
                 <div className="bg-white shadow-lg rounded-xl overflow-hidden border border-gray-100">
-                    <div className="overflow-x-auto">
+                    <div className="overflow-x-auto" style={{
+                        scrollbarWidth: 'thin',
+                        scrollbarColor: '#f97316 #f1f5f9'
+                    }}>
+                        <style>{`
+                            .overflow-x-auto::-webkit-scrollbar {
+                                height: 6px;
+                            }
+                            .overflow-x-auto::-webkit-scrollbar-track {
+                                background: #f1f5f9;
+                                border-radius: 3px;
+                            }
+                            .overflow-x-auto::-webkit-scrollbar-thumb {
+                                background: #f97316;
+                                border-radius: 3px;
+                            }
+                            .overflow-x-auto::-webkit-scrollbar-thumb:hover {
+                                background: #ea580c;
+                            }
+                        `}</style>
                         <table className="min-w-full divide-y divide-gray-200">
                             <thead className="bg-gradient-to-r from-navy-900 to-navy-700">
                                 <tr>
-                                    <th
-                                        scope="col"
-                                        className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider"
-                                    >
-                                        Student
-                                    </th>
-                                    <th
-                                        scope="col"
-                                        className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider"
-                                    >
-                                        Contact
-                                    </th>
-                                    <th
-                                        scope="col"
-                                        className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider"
-                                    >
-                                        Grade
-                                    </th>
-                                    <th
-                                        scope="col"
-                                        className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider"
-                                    >
-                                        Courses
-                                    </th>
-                                    <th
-                                        scope="col"
-                                        className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider"
-                                    >
-                                        Status
-                                    </th>
-                                    <th
-                                        scope="col"
-                                        className="px-6 py-3 text-right text-xs font-medium text-white uppercase tracking-wider"
-                                    >
-                                        Actions
-                                    </th>
+                                    <th className="px-6 py-3"></th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">Student</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">Contact</th>
+                                    <th className="px-6 py-3 text-xs font-medium text-white uppercase tracking-wider text-center" colSpan={3}>Purchased Class</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">Completed</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">Absent w/ntc counted</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">Absent without Notice</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">Class Left</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">Free Classes</th>
+                                    <th className="px-6 py-3 text-left text-xs font-medium text-white uppercase tracking-wider">Free Class Consumed</th>
+                                    <th className="px-6 py-3 text-right text-xs font-medium text-white uppercase tracking-wider">Actions</th>
+                                </tr>
+                                <tr style={{height: '8px'}}>
+                                    <td style={{backgroundColor: '#94a3b8'}}></td>
+                                    <td style={{backgroundColor: '#94a3b8'}}></td>
+                                    <td style={{backgroundColor: '#94a3b8'}}></td>
+                                    <td className="bg-navy-500"></td>
+                                    <td className="bg-orange-500"></td>
+                                    <td className="bg-[#4A9782]"></td>
+                                    <td className="bg-green-400"></td>
+                                    <td className="bg-blue-400"></td>
+                                    <td className="bg-red-400"></td>
+                                    <td style={{backgroundColor: '#94a3b8'}}></td>
+                                    <td className="bg-yellow-400"></td>
+                                    <td className="bg-pink-400"></td>
+                                    <td style={{backgroundColor: '#94a3b8'}}></td>
                                 </tr>
                             </thead>
                             <tbody className="bg-white divide-y divide-gray-200">
                                 {filteredStudents.length > 0 ? (
-                                    filteredStudents.map((student) => (
-                                        <tr
-                                            key={student.id}
-                                            className="hover:bg-gray-50 transition-colors"
-                                        >
-                                            <td className="px-6 py-4 whitespace-nowrap">
-                                                <div className="flex items-center">
-                                                    <div className="flex-shrink-0 h-10 w-10 rounded-full overflow-hidden border-2 border-orange-400">
-                                                        <img
-                                                            src={student.image}
-                                                            alt={student.name}
-                                                            className="h-full w-full object-cover"
-                                                            onError={(e) => {
-                                                                e.target.onerror =
-                                                                    null;
-                                                                e.target.src =
-                                                                    "https://via.placeholder.com/150?text=Student";
-                                                            }}
-                                                        />
-                                                    </div>
-                                                    <div className="ml-4">
-                                                        <div className="text-sm font-medium text-gray-900">
-                                                            {student.name}
-                                                        </div>
-                                                        <div className="text-xs text-gray-500">
-                                                            ID: {student.id}
+                                    filteredStudents.map((student) => {
+                                        const stats = getStudentStatsFromClasses(student, allClasses);
+                                        return (
+                                            <tr key={student.id} className="hover:bg-gray-50 transition-colors">
+                                                <td className="px-6 py-4 whitespace-nowrap">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={selectedStudents.includes(student.id)}
+                                                        onChange={() => handleSelectStudent(student.id)}
+                                                        className="h-4 w-4 text-navy-600 focus:ring-navy-500 border-gray-300 rounded"
+                                                    />
+                                                </td>
+                                                <td className="px-6 py-4 whitespace-nowrap">
+                                                    <div className="flex items-center">
+                                                        <div className="ml-0">
+                                                            <div className="text-sm font-medium text-gray-900">
+                                                                {student.name}
+                                                            </div>
+                                                            <div className="text-xs text-gray-500">
+                                                                ID: {student.id}
+                                                            </div>
                                                         </div>
                                                     </div>
-                                                </div>
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap">
-                                                <div className="text-sm text-gray-900">
-                                                    {student.email}
-                                                </div>
-                                                <div className="text-xs text-gray-500">
-                                                    {student.phone}
-                                                </div>
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap">
-                                                <span className="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
-                                                    {student.grade}
-                                                </span>
-                                            </td>
-                                            <td className="px-6 py-4">
-                                                <div className="flex flex-wrap gap-1">
-                                                    {student.courses.map(
-                                                        (course, index) => (
-                                                            <span
-                                                                key={index}
-                                                                className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800"
-                                                            >
-                                                                {course}
-                                                            </span>
-                                                        )
-                                                    )}
-                                                </div>
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap">
-                                                <span
-                                                    className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                                                        student.status ===
-                                                        "Active"
-                                                            ? "bg-green-100 text-green-800"
-                                                            : "bg-gray-100 text-gray-800"
-                                                    }`}
-                                                >
-                                                    {student.status}
-                                                </span>
-                                            </td>
-                                            <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                                                <div className="flex justify-end space-x-2">
-                                                    <button
-                                                        onClick={() =>
-                                                            openEditModal(
-                                                                student
-                                                            )
-                                                        }
-                                                        className="text-navy-600 hover:text-navy-900 transition-colors p-1 rounded-full hover:bg-navy-50"
-                                                        title="Edit student"
-                                                    >
-                                                        <Edit className="h-4 w-4" />
-                                                    </button>
-                                                    <button
-                                                        onClick={() =>
-                                                            openDeleteModal(
-                                                                student
-                                                            )
-                                                        }
-                                                        className="text-red-600 hover:text-red-900 transition-colors p-1 rounded-full hover:bg-red-50"
-                                                        title="Delete student"
-                                                    >
-                                                        <Trash2 className="h-4 w-4" />
-                                                    </button>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    ))
+                                                </td>
+                                                <td className="px-6 py-4 whitespace-nowrap">
+                                                    <div className="text-sm text-gray-900">
+                                                        {student.email}
+                                                    </div>
+                                                </td>
+                                                {/* Purchased Class: Regular */}
+                                                <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-medium">
+                                                    <span className="bg-navy-500 border border-blue-700 text-white px-3 py-1 rounded-md text-center text-sm font-medium">
+                                                        {(() => {
+                                                            const purchased = student.purchased_class_regular || 0;
+                                                            const used = getUsedCount(student, "regular");
+                                                            const remaining = Math.max(0, purchased - used);
+                                                            return `${remaining}/${purchased}`;
+                                                        })()}
+                                                    </span>
+                                                </td>
+                                                {/* Purchased Class: Premium */}
+                                                <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-medium">
+                                                    <span className="bg-orange-500 border border-orange-600 text-white px-3 py-1 rounded-md text-center text-sm font-medium">
+                                                        {(() => {
+                                                            const purchased = student.purchased_class_premium || 0;
+                                                            const used = getUsedCount(student, "premium");
+                                                            const remaining = Math.max(0, purchased - used);
+                                                            return `${remaining}/${purchased}`;
+                                                        })()}
+                                                    </span>
+                                                </td>
+                                                {/* Purchased Class: Group */}
+                                                <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-medium">
+                                                    <span className="bg-[#4A9782] border border-[#4A9782] text-white px-3 py-1 rounded-md text-center text-sm font-medium">
+                                                        {(() => {
+                                                            const purchased = student.purchased_class_group || 0;
+                                                            const used = getUsedCount(student, "group");
+                                                            const remaining = Math.max(0, purchased - used);
+                                                            return `${remaining}/${purchased}`;
+                                                        })()}
+                                                    </span>
+                                                </td>
+                                                <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-medium">
+                                                    <div className="text-sm text-gray-900 bg-green-400 border border-green-500 text-white px-3 py-1 rounded-md text-center font-medium">
+                                                        {stats.completed}
+                                                    </div>
+                                                </td>
+                                                <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-medium">
+                                                    <div className="text-sm text-gray-900 bg-blue-400 border border-blue-500 text-white px-3 py-1 rounded-md text-center font-medium">
+                                                        {stats.absentWntcCounted}
+                                                    </div>
+                                                </td>
+                                                <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-medium">
+                                                    <div className="text-sm text-gray-900 bg-red-400 border border-red-500 text-white px-3 py-1 rounded-md text-center font-medium">
+                                                        {stats.absentWithoutNotice || 0}
+                                                    </div>
+                                                </td>
+                                                <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-medium">
+                                                    <div className="text-sm text-gray-900">
+                                                        {stats.classLeft}
+                                                    </div>
+                                                </td>
+                                                <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-medium">
+                                                    <div className="text-sm text-gray-900 bg-yellow-400 border border-yellow-500 text-white px-3 py-1 rounded-md text-center font-medium">
+                                                        {stats.freeClasses}
+                                                    </div>
+                                                </td>
+                                                <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-medium      ">
+                                                    <div className="text-sm text-gray-900 bg-pink-400 border border-pink-400 text-white px-3 py-1 rounded-md text-center font-medium">
+                                                        {stats.freeClassConsumed}
+                                                    </div>
+                                                </td>
+                                                <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                                    <div className="flex justify-end space-x-2">
+                                                        <button
+                                                            onClick={() =>
+                                                                openEditModal(
+                                                                    student
+                                                                )
+                                                            }
+                                                            className="text-navy-600 hover:text-navy-900 transition-colors p-1 rounded-full hover:bg-navy-50"
+                                                            title="Edit student"
+                                                        >
+                                                            <Edit className="h-4 w-4" />
+                                                        </button>
+                                                        <button
+                                                            onClick={() =>
+                                                                openDeleteModal(
+                                                                    student
+                                                                )
+                                                            }
+                                                            className="text-red-600 hover:text-red-900 transition-colors p-1 rounded-full hover:bg-red-50"
+                                                            title="Delete student"
+                                                        >
+                                                            <Trash2 className="h-4 w-4" />
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })
                                 ) : (
                                     <tr>
                                         <td
-                                            colSpan="6"
+                                            colSpan="12"
                                             className="px-6 py-12 text-center"
                                         >
                                             <div className="flex flex-col items-center justify-center text-gray-400">
@@ -428,15 +1100,15 @@ export default function Students() {
                     <div className="fixed inset-0 overflow-y-auto z-50">
                         <div className="flex items-center justify-center min-h-screen pt-4 px-4 pb-20 text-center sm:block sm:p-0">
                             <Transition.Child
+                                as="div"
                                 enter="ease-out duration-300"
                                 enterFrom="opacity-0"
                                 enterTo="opacity-100"
                                 leave="ease-in duration-200"
                                 leaveFrom="opacity-100"
                                 leaveTo="opacity-0"
-                            >
-                                <div className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity"></div>
-                            </Transition.Child>
+                                className="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity"
+                            />
 
                             <span
                                 className="hidden sm:inline-block sm:align-middle sm:h-screen"
@@ -446,6 +1118,7 @@ export default function Students() {
                             </span>
 
                             <Transition.Child
+                                as="div"
                                 enter="ease-out duration-300"
                                 enterFrom="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
                                 enterTo="opacity-100 translate-y-0 sm:scale-100"
@@ -497,33 +1170,19 @@ export default function Students() {
                     </div>
                 </Transition>
 
-                {/* Notification */}
-                <AnimatePresence>
-                    {notification && (
-                        <motion.div
-                            initial={{ opacity: 0, y: 50 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: 50 }}
-                            transition={{ duration: 0.3 }}
-                            className={`fixed bottom-4 right-4 px-6 py-4 rounded-lg shadow-xl ${
-                                notification.type === "success"
-                                    ? "bg-green-500"
-                                    : "bg-yellow-500"
-                            } text-white max-w-sm z-50`}
-                        >
-                            <div className="flex items-center space-x-3">
-                                {notification.type === "success" ? (
-                                    <CheckCircle className="h-5 w-5 flex-shrink-0" />
-                                ) : (
-                                    <AlertCircle className="h-5 w-5 flex-shrink-0" />
-                                )}
-                                <p className="font-medium">
-                                    {notification.message}
-                                </p>
-                            </div>
-                        </motion.div>
-                    )}
-                </AnimatePresence>
+                {/* Toast Container */}
+                <ToastContainer
+                    position="top-right"
+                    autoClose={3000}
+                    hideProgressBar={false}
+                    newestOnTop={false}
+                    closeOnClick
+                    rtl={false}
+                    pauseOnFocusLoss
+                    draggable
+                    pauseOnHover
+                    theme="light"
+                />
             </div>
         </AdminLayout>
     );

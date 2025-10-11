@@ -5,7 +5,7 @@ import TextInput from '@/Components/TextInput';
 import { Transition } from '@headlessui/react';
 import { Link, useForm, usePage } from '@inertiajs/react';
 import { Camera, User, Calendar, Upload } from 'lucide-react';
-import { useRef, useState } from 'react';
+import { useRef, useState, useEffect } from 'react';
 
 export default function UpdateProfileInformation({
     mustVerifyEmail,
@@ -14,15 +14,52 @@ export default function UpdateProfileInformation({
 }) {
     const user = usePage().props.auth.user;
     const fileInputRef = useRef(null);
-    const [preview, setPreview] = useState(user.profile_photo_url || '');
+    
+    // Use the profile_photo_url from user object or fallback to a default image
+    const photoUrl = user.profile_photo_url || '/Logo/SpeedUp.png';
+    console.log("Current user photo URL:", photoUrl);
+    
+    const [preview, setPreview] = useState(photoUrl);
 
-    const { data, setData, patch, errors, processing, recentlySuccessful, reset } =
-        useForm({
-            name: user.name || '',
-            email: user.email || '',
-            birthdate: user.birthdate || '',
-            photo: null,
-        });
+    // Helper function to convert date format to yyyy-MM-dd
+    const formatDateForInput = (dateString) => {
+        if (!dateString) return '';
+        
+        // If it's already in yyyy-MM-dd format, return as is
+        if (dateString.match(/^\d{4}-\d{2}-\d{2}$/)) {
+            return dateString;
+        }
+        
+        // If it's in MM/dd/yyyy format, convert it
+        if (dateString.includes('/')) {
+            const parts = dateString.split('/');
+            if (parts.length === 3) {
+                const [month, day, year] = parts;
+                return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+            }
+        }
+        
+        return '';
+    };
+    
+    const { data, setData, errors, reset, clearErrors } = useForm({
+        name: user.name || '',
+        email: user.email || '',
+        birthdate: formatDateForInput(user.birthdate),
+        photo: null,
+    });
+    
+    // Add these states since we're no longer using Inertia's built-in processing state
+    const [processing, setProcessing] = useState(false);
+    const [recentlySuccessful, setRecentlySuccessful] = useState(false);
+    
+    // Clear all errors when component mounts or when data changes
+    useEffect(() => {
+        // This ensures any errors from previous form submissions are cleared
+        if (Object.keys(errors).length > 0) {
+            clearErrors();
+        }
+    }, [data.name, data.email, errors, clearErrors]); // Re-run when name or email changes
 
     const handleImageChange = (e) => {
         const file = e.target.files[0];
@@ -42,19 +79,104 @@ export default function UpdateProfileInformation({
 
     const submit = (e) => {
         e.preventDefault();
-
+        
+        // Set processing to true to show the loading state
+        setProcessing(true);
+        
+        // Basic form validation before submission
+        if (!data.name || !data.email) {
+            // If validation fails, set errors and return
+            if (!data.name) errors.name = 'The name field is required.';
+            if (!data.email) errors.email = 'The email field is required.';
+            setProcessing(false);
+            return;
+        }
+        
+        // Create FormData object to properly handle file uploads
         const formData = new FormData();
+        formData.append('_method', 'PATCH');
         formData.append('name', data.name);
         formData.append('email', data.email);
-        formData.append('birthdate', data.birthdate);
+        if (data.birthdate) {
+            formData.append('birthdate', data.birthdate);
+        }
         if (data.photo) {
             formData.append('photo', data.photo);
         }
-
-        patch(route('profile.update'), formData, {
-            preserveScroll: true,
-            onSuccess: () => reset('photo'),
-        });
+        
+        // Clear any existing errors
+        clearErrors();
+        
+        try {
+            // Use direct fetch to submit the form - bypassing the Inertia validation issues
+            fetch(route('profile.update'), {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+                    'Accept': 'application/json',
+                },
+                credentials: 'same-origin',
+            })
+            .then(response => {
+                // Check if the response is JSON
+                const contentType = response.headers.get('content-type');
+                const isJson = contentType && contentType.includes('application/json');
+                
+                if (response.ok) {
+                    // Success case
+                    setRecentlySuccessful(true);
+                    
+                    if (data.photo) {
+                        // For profile photo updates, we need to reload the page
+                        // to get the new photo URL from the server
+                        console.log("Photo was uploaded successfully, reloading page...");
+                        setTimeout(() => {
+                            window.location.reload();
+                        }, 1500);
+                    } else {
+                        // Just reset the photo field if no new photo was uploaded
+                        reset('photo');
+                        
+                        // Hide success message after 2.5 seconds
+                        setTimeout(() => {
+                            setRecentlySuccessful(false);
+                        }, 2500);
+                    }
+                } 
+                else if (isJson) {
+                    // Get JSON validation errors
+                    return response.json().then(data => {
+                        if (data.errors) {
+                            // Set validation errors from server
+                            for (const [key, value] of Object.entries(data.errors)) {
+                                const errorMessage = Array.isArray(value) ? value[0] : value;
+                                // Use setData to force a UI update
+                                setData(key, data[key]);
+                                // Set the error message
+                                errors[key] = errorMessage;
+                            }
+                        } else if (data.message) {
+                            console.error('Server error:', data.message);
+                        }
+                    });
+                } 
+                else {
+                    // Non-JSON error
+                    console.error('Server returned an error:', response.status, response.statusText);
+                }
+            })
+            .catch(error => {
+                console.error('Network or parsing error:', error);
+            })
+            .finally(() => {
+                // Always turn off processing state
+                setProcessing(false);
+            });
+        } catch (error) {
+            console.error('Exception during form submission:', error);
+            setProcessing(false);
+        }
     };
 
     return (
@@ -113,9 +235,18 @@ export default function UpdateProfileInformation({
                         <div className="relative">
                             <TextInput
                                 id="name"
-                                className="w-full border-navy-200 focus:border-orange-500 focus:ring focus:ring-orange-200 focus:ring-opacity-50 rounded-lg"
+                                className={`w-full border-navy-200 focus:border-orange-500 focus:ring focus:ring-orange-200 focus:ring-opacity-50 rounded-lg ${errors.name ? 'border-red-500' : ''}`}
                                 value={data.name}
-                                onChange={(e) => setData('name', e.target.value)}
+                                onChange={(e) => {
+                                    setData('name', e.target.value);
+                                    if (errors.name) clearErrors('name');
+                                }}
+                                onBlur={() => {
+                                    if (!data.name.trim()) {
+                                        // Only for UI feedback, server will also validate
+                                        setData('name', data.name.trim());
+                                    }
+                                }}
                                 required
                                 autoComplete="name"
                             />
@@ -130,9 +261,18 @@ export default function UpdateProfileInformation({
                             <TextInput
                                 id="email"
                                 type="email"
-                                className="w-full border-navy-200 focus:border-orange-500 focus:ring focus:ring-orange-200 focus:ring-opacity-50 rounded-lg"
+                                className={`w-full border-navy-200 focus:border-orange-500 focus:ring focus:ring-orange-200 focus:ring-opacity-50 rounded-lg ${errors.email ? 'border-red-500' : ''}`}
                                 value={data.email}
-                                onChange={(e) => setData('email', e.target.value)}
+                                onChange={(e) => {
+                                    setData('email', e.target.value);
+                                    if (errors.email) clearErrors('email');
+                                }}
+                                onBlur={() => {
+                                    if (!data.email.trim()) {
+                                        // Only for UI feedback, server will also validate
+                                        setData('email', data.email.trim());
+                                    }
+                                }}
                                 required
                                 autoComplete="email"
                             />
@@ -151,9 +291,12 @@ export default function UpdateProfileInformation({
                         <TextInput
                             id="birthdate"
                             type="date"
-                            className="w-full border-navy-200 focus:border-orange-500 focus:ring focus:ring-orange-200 focus:ring-opacity-50 rounded-lg"
-                            value={data.birthdate}
-                            onChange={(e) => setData('birthdate', e.target.value)}
+                            className={`w-full border-navy-200 focus:border-orange-500 focus:ring focus:ring-orange-200 focus:ring-opacity-50 rounded-lg ${errors.birthdate ? 'border-red-500' : ''}`}
+                            value={data.birthdate || ''}
+                            onChange={(e) => {
+                                setData('birthdate', e.target.value);
+                                if (errors.birthdate) clearErrors('birthdate');
+                            }}
                         />
                         <Calendar className="h-4 w-4 text-navy-400 absolute right-3 top-1/2 transform -translate-y-1/2" />
                     </div>
@@ -210,6 +353,17 @@ export default function UpdateProfileInformation({
                             Changes saved successfully!
                         </div>
                     </Transition>
+                    
+                    {/* Error Message Summary - We'll show a different message while processing */}
+                    {(errors.name || errors.email || errors.birthdate || errors.photo) && !processing && (
+                        <div className="mr-4 inline-flex items-center px-4 py-2 bg-red-50 border border-red-100 text-red-700 text-sm font-medium rounded-lg">
+                            <svg className="h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                            </svg>
+                            Please fix the errors above
+                        </div>
+                    )}
+                    
                     <button
                         type="submit"
                         disabled={processing}

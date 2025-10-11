@@ -1,8 +1,11 @@
-import React, { useState, useEffect } from "react";
-import { Head } from "@inertiajs/react";
+import React, { useState, useEffect, useCallback } from "react";
+import { Head, usePage } from "@inertiajs/react";
 import TeachersLayout from "@/Layouts/TeachersLayout";
 import DetailsCalendarModal from "@/Components/Teacher/DetailsCalendarModal";
+import MoreClassesModal from "@/Components/Teacher/MoreClassesModal";
 import Legend from "@/Components/Admin/Legend";
+import axios from "axios";
+import refreshEventManager from "@/utils/refreshEvents";
 import { 
   ChevronDown, 
   ChevronUp,
@@ -24,13 +27,19 @@ import {
   ZapOff,
   CalendarX
 } from 'lucide-react';
+import { toast, ToastContainer } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 
 export default function TeacherCalendar() {
+  const { auth } = usePage().props;
+  
   // State for calendar and events
   const [selectedDate, setSelectedDate] = useState(new Date())
   const [events, setEvents] = useState([])
+  const [allEvents, setAllEvents] = useState([]) // Store all events for filtering
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+  const [renderKey, setRenderKey] = useState(0) // Force re-render key
   
   // Filter states
   const [filterOpen, setFilterOpen] = useState(false)
@@ -38,286 +47,156 @@ export default function TeacherCalendar() {
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   
-  // Status options matching TeacherClasses.jsx
-  const statusOptions = [
-    {
-      value: 'FC not consumed (RG)',
-      label: 'FC not consumed (RG)',
-      icon: Zap,
-      bgColor: 'bg-purple-100',
-      textColor: 'text-purple-900',
-    },
-    {
-      value: 'FC consumed (RG)',
-      label: 'FC consumed (RG)',
-      icon: ZapOff,
-      bgColor: 'bg-purple-200',
-      textColor: 'text-purple-900',
-    },
-    {
-      value: 'Completed (RG)',
-      label: 'Completed (RG)',
-      icon: CheckCircle,
-      bgColor: 'bg-green-100',
-      textColor: 'text-green-900',
-    },
-    {
-      value: 'Completed (PRM)',
-      label: 'Completed (PRM)',
-      icon: CheckCircle,
-      bgColor: 'bg-blue-100',
-      textColor: 'text-blue-900',
-    },
-    {
-      value: 'Absent w/ntc counted (RG)',
-      label: 'Absent w/ntc counted (RG)',
-      icon: Clock,
-      bgColor: 'bg-yellow-100',
-      textColor: 'text-yellow-900',
-    },
-    {
-      value: 'Absent w/o ntc counted (RG)',
-      label: 'Absent w/o ntc counted (RG)',
-      icon: AlertCircle,
-      bgColor: 'bg-amber-100',
-      textColor: 'text-amber-900',
-    },
-    {
-      value: 'Absent w/ntc-not counted (RG)',
-      label: 'Absent w/ntc-not counted (RG)',
-      icon: CalendarX,
-      bgColor: 'bg-orange-100',
-      textColor: 'text-orange-900',
-    },
-    {
-      value: 'Cancelled (RG)',
-      label: 'Cancelled (RG)',
-      icon: XCircle,
-      bgColor: 'bg-red-100',
-      textColor: 'text-red-900',
-    },
-  ]
+  // Status options matching AdminCalendar.jsx
+  const statuses = [
+    "Valid for cancellation",
+    "FC not consumed",
+    "Completed", 
+    "Absent w/ntc counted",
+            "Cancelled",
+    "Absent w/ntc-not counted",
+    "FC consumed",
+    "Absent Without Notice",
+  ];
   
   // Modal states
   const [showDetailsModal, setShowDetailsModal] = useState(false)
   const [selectedEvent, setSelectedEvent] = useState(null)
+  const [updateSuccess, setUpdateSuccess] = useState(false)
+  const [forceUpdateTimestamp, setForceUpdateTimestamp] = useState(Date.now())
+  const [calendarKey, setCalendarKey] = useState(0) // Calendar component key
+  
+  // State for MoreClassesModal
+  const [showMoreClassesModal, setShowMoreClassesModal] = useState(false)
+  const [selectedDayEvents, setSelectedDayEvents] = useState([])
+  const [selectedDayDate, setSelectedDayDate] = useState(null)
   
   // Helper function to convert date to weekday name
   const getWeekdayFromDate = (date) => {
     const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
     return days[date.getDay()];
   };
-  
-  // Dummy class data with minimal fields
-  const dummyEvents = [
-    { 
-      id: 1, 
-      student_name: 'Aurora Chen',
-      day: getWeekdayFromDate(new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 5)),
-      time: '17:00',
-      class_type: 'Regular',
-      status: 'FC not consumed (RG)',
-      date: new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 5, 17, 0)
-    },
-    { 
-      id: 2, 
-      student_name: 'Cozy Huang',
-      day: getWeekdayFromDate(new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 5)),
-      time: '17:30',
-      class_type: 'Premium',
-      status: 'Completed (PRM)',
-      date: new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 5, 17, 30)
-    },
-    { 
-      id: 3, 
-      student_name: 'Nina Su',
-      day: getWeekdayFromDate(new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 5)),
-      time: '18:00',
-      class_type: 'Group',
-      status: 'Completed (RG)',
-      date: new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 5, 18, 0)
-    },
-    { 
-      id: 4, 
-      student_name: 'Leo Johnson',
-      day: getWeekdayFromDate(new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 6)),
-      time: '14:00',
-      class_type: 'Regular',
-      status: 'Absent w/ntc counted (RG)',
-      date: new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 6, 14, 0)
-    },
-    { 
-      id: 5, 
-      student_name: 'Emily Wang',
-      day: getWeekdayFromDate(new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 6)),
-      time: '15:30',
-      class_type: 'Premium',
-      status: 'FC consumed (RG)',
-      date: new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 6, 15, 30)
-    },
-    { 
-      id: 7, 
-      student_name: 'Jane Zhang',
-      day: getWeekdayFromDate(new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 6)),
-      time: '20:30',
-      class_type: 'Regular',
-      status: 'Absent w/o ntc counted (RG)',
-      date: new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 6, 20, 30)
-    },
-    { 
-      id: 8, 
-      student_name: 'Jane Zhang',
-      day: getWeekdayFromDate(new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 6)),
-      time: '21:00', 
-      duration: 30,
-      class_type: 'Regular',
-      status: 'Absent w/ntc-not counted (RG)',
-      // Additional properties needed for calendar functionality
-      date: new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 6, 21, 0),
-      endDate: new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 6, 21, 30),
-      title: 'Jane Zhang'
-    },
-    { 
-      id: 9, 
-      student_name: 'Alice Bu',
-      day: getWeekdayFromDate(new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 6)),
-      time: '21:30', 
-      duration: 30,
-      class_type: 'Regular',
-      status: 'Cancelled (RG)',
-      // Additional properties needed for calendar functionality
-      date: new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 6, 21, 30),
-      endDate: new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 6, 22, 0),
-      title: 'Alice Bu'
-    },
-    { 
-      id: 10, 
-      student_name: 'Matson Chen',
-      day: getWeekdayFromDate(new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 8)),
-      time: '17:00', 
-      duration: 30,
-      class_type: 'Premium',
-      status: 'Completed (PRM)',
-      // Additional properties needed for calendar functionality
-      date: new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 8, 17, 0),
-      endDate: new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 8, 17, 30),
-      title: 'Matson Chen'
-    },
-    { 
-      id: 11, 
-      student_name: 'Group English',
-      day: getWeekdayFromDate(new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 10)),
-      time: '18:00', 
-      duration: 60,
-      class_type: 'Group',
-      status: 'FC not consumed (RG)',
-      // Additional properties needed for calendar functionality
-      date: new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 10, 18, 0),
-      endDate: new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 10, 19, 0),
-      title: 'Group English'
-    },
-    { 
-      id: 12, 
-      student_name: 'Group Science',
-      day: getWeekdayFromDate(new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 12)),
-      time: '18:30', 
-      duration: 60,
-      class_type: 'Group',
-      status: 'Completed (RG)',
-      // Additional properties needed for calendar functionality
-      date: new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 12, 18, 30),
-      endDate: new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 12, 19, 30),
-      title: 'Group Science'
-    },
-    { 
-      id: 13, 
-      student_name: 'Matson Chen',
-      day: getWeekdayFromDate(new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 14)),
-      time: '16:30', 
-      duration: 30,
-      class_type: 'Premium',
-      status: 'Completed (PRM)',
-      // Additional properties needed for calendar functionality
-      date: new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 14, 16, 30),
-      endDate: new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 14, 17, 0),
-      title: 'Matson Chen'
-    },
-    { 
-      id: 14, 
-      student_name: 'Amy Li',
-      day: getWeekdayFromDate(new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 15)),
-      time: '18:00', 
-      duration: 30,
-      class_type: 'Regular',
-      status: 'FC not consumed (RG)',
-      // Additional properties needed for calendar functionality
-      date: new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 15, 18, 0),
-      endDate: new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 15, 18, 30),
-      title: 'Amy Li'
+
+  // Fetch classes from API
+  const fetchClasses = async () => {
+    console.log('Teacher fetchClasses called for date:', selectedDate);
+    setLoading(true);
+    setError(null);
+    try {
+      console.log('Fetching classes for teacher:', auth.user?.name, 'ID:', auth.user?.id);
+      const response = await axios.get('/api/teacher/classes/calendar');
+      const classes = response.data || [];
+      
+      console.log('Teacher retrieved classes:', classes.length, 'classes');
+      console.log('Teacher classes data:', classes);
+      
+      // Transform API data to match expected event format
+      const transformedEvents = classes.map(classItem => {
+        try {
+          // Ensure date is properly formatted
+          const eventDate = classItem.date ? new Date(classItem.date) : new Date();
+          
+          return {
+            id: classItem.id,
+            title: classItem.title || classItem.student_name,
+            student_name: classItem.student_name,
+            teacher_name: classItem.teacher_name,
+            teacher_id: classItem.teacher_id,
+            class_type: classItem.class_type,
+            date: eventDate,
+            time: classItem.time,
+            status: classItem.status,
+            notes: classItem.notes || '',
+            // Additional properties for calendar display
+            weekday: getWeekdayFromDate(eventDate),
+            description: `${classItem.class_type} for ${classItem.student_name}`,
+            start: classItem.start || `${classItem.date}T${classItem.time}`,
+            created_at: classItem.created_at,
+            updated_at: classItem.updated_at
+          };
+        } catch (error) {
+          console.error('Error transforming teacher class data in fetchClasses:', classItem, error);
+          return null;
+        }
+      }).filter(event => event !== null); // Remove null entries
+      
+      console.log('Transformed events:', transformedEvents);
+      
+      setAllEvents(transformedEvents);
+      setEvents(transformedEvents);
+      setRenderKey(prev => prev + 1); // Force re-render after fetching new events
+    } catch (err) {
+      console.error('Error fetching classes:', err);
+      
+      // More detailed error handling
+      if (err.response) {
+        // Server responded with error status
+        console.error('Response status:', err.response.status);
+        console.error('Response data:', err.response.data);
+        setError(`Failed to load classes: ${err.response.data.message || err.response.statusText}`);
+      } else if (err.request) {
+        // Request was made but no response received
+        console.error('No response received:', err.request);
+        setError('Failed to connect to server');
+      } else {
+        // Something else happened
+        console.error('Error message:', err.message);
+        setError(`Failed to load classes: ${err.message}`);
+      }
+      
+      setAllEvents([]);
+      setEvents([]);
+    } finally {
+      setLoading(false);
     }
-  ];
-  
-  // Dummy class data generator function
-  const generateDummyEvents = () => {
-    const events = [];
-    const eventTypes = ["lecture", "lab", "workshop", "seminar"];
-    const statuses = ["scheduled", "cancelled", "completed"];
-    const rooms = ["Room 101", "Computer Lab A", "Science Lab", "Auditorium B"];
-    const subjects = ["Mathematics", "Physics", "Computer Science", "Biology", "Chemistry"];
-    
-    // Generate random events for the current month
-    const currentDate = new Date();
-    const year = currentDate.getFullYear();
-    const month = currentDate.getMonth();
-    const daysInMonth = new Date(year, month + 1, 0).getDate();
-    
-    // Generate 20-30 random events
-    const numEvents = Math.floor(Math.random() * 11) + 20;
-    
-    for (let i = 0; i < numEvents; i++) {
-      const day = Math.floor(Math.random() * daysInMonth) + 1;
-      const hour = Math.floor(Math.random() * 12) + 8; // 8 AM to 8 PM
-      const minute = Math.floor(Math.random() * 4) * 15; // 0, 15, 30, or 45
-      
-      const eventDate = new Date(year, month, day, hour, minute);
-      const endDate = new Date(eventDate);
-      endDate.setHours(endDate.getHours() + Math.floor(Math.random() * 3) + 1); // 1-3 hours duration
-      
-      const type = eventTypes[Math.floor(Math.random() * eventTypes.length)];
-      const status = statuses[Math.floor(Math.random() * statuses.length)];
-      const room = rooms[Math.floor(Math.random() * rooms.length)];
-      const subject = subjects[Math.floor(Math.random() * subjects.length)];
-      
-      events.push({
-        id: `class-${i}`,
-        title: `${subject} ${type.charAt(0).toUpperCase() + type.slice(1)}`,
-        type,
-        status,
-        date: eventDate,
-        endDate,
-        room,
-        students: Math.floor(Math.random() * 30) + 10,
-        description: `${subject} ${type} for Grade ${Math.floor(Math.random() * 6) + 7}`,
-        notes: `Remember to bring ${type === 'lab' ? 'lab equipment' : type === 'lecture' ? 'textbooks' : 'materials'}`
-      });
-    }
-    
-    return events;
   };
   
-  // Memoize dummyEvents to prevent unnecessary re-renders
-  const memoizedDummyEvents = React.useMemo(() => [...dummyEvents], []);
-  
-  // Set events on component mount and when memoizedDummyEvents changes
+  // Fetch classes on component mount
   useEffect(() => {
-    setEvents([...memoizedDummyEvents]);
+    fetchClasses();
     setSelectedDate(new Date());
-  }, [memoizedDummyEvents]);
+  }, []);
+
+  // Removed auto-refresh mechanism that was polling every 3 seconds
+  // Force refresh to clear any cached references
+  
+  // Listen for external refresh events (e.g., from admin updates)
+  useEffect(() => {
+    let refreshTimeout;
+    
+    const unsubscribe = refreshEventManager.addListener((refreshData) => {
+      console.log('Teacher received refresh event:', refreshData);
+      
+      // Clear any existing timeout to debounce rapid refreshes
+      if (refreshTimeout) {
+        clearTimeout(refreshTimeout);
+      }
+      
+      // Debounce refresh calls to prevent rapid fire refreshes
+      refreshTimeout = setTimeout(() => {
+        // Trigger immediate data refresh
+        fetchClasses();
+        
+        // Single refresh for real-time updates
+        setRenderKey(prev => prev + 1);
+        setForceUpdateTimestamp(Date.now());
+        setCalendarKey(prev => prev + 1);
+      }, 300); // 300ms debounce
+    });
+    
+    // Cleanup listener and timeout on unmount
+    return () => {
+      if (refreshTimeout) {
+        clearTimeout(refreshTimeout);
+      }
+      unsubscribe();
+    };
+  }, []);
   
   // Update events when filters change
   useEffect(() => {
     if (searchQuery || statusFilter !== 'all') {
-      const filtered = memoizedDummyEvents.filter(event => {
+      const filtered = allEvents.filter(event => {
         try {
           // Apply search filter
           if (searchQuery && 
@@ -340,9 +219,9 @@ export default function TeacherCalendar() {
       
       setEvents([...filtered]);
     } else {
-      setEvents([...memoizedDummyEvents]);
+      setEvents([...allEvents]);
     }
-  }, [searchQuery, statusFilter, memoizedDummyEvents]);
+  }, [searchQuery, statusFilter, allEvents]);
 
   
   // Generate calendar days with actual events
@@ -400,49 +279,42 @@ export default function TeacherCalendar() {
            date1.getFullYear() === date2.getFullYear();
   };
 
-  // Helper function to get events for a specific date
-  const getEventsForDate = (date) => {
-    if (!events || !Array.isArray(events)) {
+  // Make getEventsForDate always use the latest allEvents state
+  const getEventsForDate = useCallback((date) => {
+    if (!allEvents || !Array.isArray(allEvents)) {
       return { items: [], total: 0 };
     }
-    
-    const filteredEvents = events.filter(event => {
+    const filteredEvents = allEvents.filter(event => {
       if (!event || !event.date) return false;
-      
       try {
         // Filter by date
         const eventDate = new Date(event.date);
         if (!isSameDay(eventDate, date)) return false;
-        
         // Apply search filter if present
-        if (searchQuery && event.student_name && 
+        if (searchQuery && event.student_name &&
             !event.student_name.toLowerCase().includes(searchQuery.toLowerCase())) {
           return false;
         }
-        
         // Apply status filter if not 'all'
         if (statusFilter !== 'all' && event.status !== statusFilter) {
           return false;
         }
-        
         return true;
       } catch (error) {
         console.error('Error processing event:', event, error);
         return false;
       }
     });
-    
     // Sort events by time
     filteredEvents.sort((a, b) => {
       if (!a.time || !b.time) return 0;
       return a.time.localeCompare(b.time);
     });
-    
     return {
       items: filteredEvents,
       total: filteredEvents.length
     };
-  }
+  }, [allEvents, searchQuery, statusFilter]);
   
   const calendarDays = generateCalendarDays()
   const weekDays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
@@ -458,34 +330,361 @@ export default function TeacherCalendar() {
   
   // Event handlers
   const handleEventClick = (event) => {
-    setSelectedEvent(event);
+    console.log('Teacher handleEventClick called with event:', event);
+    // If group class, gather all students for this time/teacher/class_type/date
+    if (event.class_type === 'Group') {
+      const groupStudents = allEvents
+        .filter(ev =>
+          ev.class_type === 'Group' &&
+          ev.time === event.time &&
+          ev.teacher_id === event.teacher_id &&
+          (ev.date instanceof Date ? ev.date.toDateString() : new Date(ev.date).toDateString()) === (event.date instanceof Date ? event.date.toDateString() : new Date(event.date).toDateString())
+        )
+        .map(ev => ev.student_name);
+      setSelectedEvent({
+        ...event,
+        student_name: groupStudents,
+        date: event.date ? new Date(event.date) : new Date(),
+      });
+    } else {
+      setSelectedEvent({
+        ...event,
+        date: event.date ? new Date(event.date) : new Date(),
+      });
+    }
     setShowDetailsModal(true);
+    console.log('Teacher modal state set to open, selectedEvent:', event);
   };
 
-  const handleNotesChange = () => {
-    // No-op since we removed notes functionality
+  const handleMoreClassesClick = (dayEvents, dayDate) => {
+    console.log('Teacher handleMoreClassesClick called with:', { dayEvents, dayDate });
+    // dayEvents now contains only the hidden events passed from the button click
+    setSelectedDayEvents(dayEvents);
+    setSelectedDayDate(dayDate);
+    setShowMoreClassesModal(true);
+    console.log('Teacher modal state updated, showMoreClassesModal:', true);
   };
 
-  const handleSaveNotes = () => {
-    // No-op since we removed notes functionality
+  const handleNotesChange = (notes) => {
+    if (selectedEvent) {
+      setSelectedEvent({ ...selectedEvent, notes });
+    }
+  };
+
+  const handleSaveNotes = async (classId, notes) => {
+    try {
+      await axios.patch(`/api/teacher/classes/${classId}/notes`, {
+        notes: notes
+      });
+      
+      // Update local state
+      const updatedEvents = allEvents.map(event => 
+        event.id === classId ? { ...event, notes: notes } : event
+      );
+      
+      setAllEvents(updatedEvents);
+      
+      // Update displayed events
+      if (searchQuery || statusFilter !== 'all') {
+        const filtered = updatedEvents.filter(event => {
+          if (searchQuery && 
+              (!event.student_name || 
+               !event.student_name.toLowerCase().includes(searchQuery.toLowerCase()))) {
+            return false;
+          }
+          if (statusFilter !== 'all' && event.status !== statusFilter) {
+            return false;
+          }
+          return true;
+        });
+        setEvents(filtered);
+      } else {
+        setEvents(updatedEvents);
+      }
+    } catch (err) {
+      console.error('Error updating class notes:', err);
+      // You could add a toast notification here
+    }
+  };
+
+  // Handle status change in the modal
+  const handleStatusChange = (eventId, newStatus) => {
+    console.log('HandleStatusChange called:', eventId, newStatus);
+    
+    // Update the selected event status immediately
+    if (selectedEvent && selectedEvent.id === eventId) {
+      setSelectedEvent(prev => ({
+        ...prev,
+        status: newStatus
+      }));
+    }
+    
+    // Update the events in the local state immediately
+    setAllEvents(prevEvents => {
+      const updated = prevEvents.map(event =>
+        event.id === eventId ? { ...event, status: newStatus } : event
+      );
+      console.log('Updated allEvents:', updated);
+      return updated;
+    });
+    
+    setEvents(prevEvents => {
+      const updated = prevEvents.map(event =>
+        event.id === eventId ? { ...event, status: newStatus } : event
+      );
+      console.log('Updated events:', updated);
+      return updated;
+    });
+
+    // Single refresh to update UI
+    setRenderKey(prev => prev + 1);
+    setForceUpdateTimestamp(Date.now());
+    setCalendarKey(prev => prev + 1);
+    
+    // Trigger cross-component refresh event
+    refreshEventManager.triggerEventUpdate(eventId, 'status_change', 'teacher');
+    
+    // Force immediate notification refresh to update bell for admin
+    if (window.refreshNotifications) {
+      window.refreshNotifications();
+    }
+    
+    // Also trigger immediate admin calendar refresh
+    setTimeout(() => {
+      refreshEventManager.triggerRefresh('teacher_status_change');
+    }, 100);
+  };
+
+  // Handle class update (Update button functionality)
+  const handleUpdateClass = async (eventId, updateData) => {
+    try {
+      setLoading(true);
+      const eventToUpdate = updateData || selectedEvent;
+      if (!eventToUpdate) {
+        console.error('No event selected for update');
+        return;
+      }
+      // If group class, update all group students for this slot
+      if (eventToUpdate.class_type === 'Group' && Array.isArray(eventToUpdate.student_name)) {
+        const groupStudents = allEvents.filter(ev =>
+          ev.class_type === 'Group' &&
+          ev.time === eventToUpdate.time &&
+          ev.teacher_id === eventToUpdate.teacher_id &&
+          (ev.date instanceof Date ? ev.date.toDateString() : new Date(ev.date).toDateString()) === (eventToUpdate.date instanceof Date ? eventToUpdate.date.toDateString() : new Date(eventToUpdate.date).toDateString())
+        );
+        await Promise.all(groupStudents.map(async (cls) => {
+          const payload = {
+            teacher_id: cls.teacher_id,
+            student_name: cls.student_name,
+            class_type: cls.class_type,
+            schedule: cls.date ? (cls.date instanceof Date ? cls.date.toISOString().split('T')[0] : cls.date) : '',
+            time: cls.time,
+            status: eventToUpdate.status
+          };
+          await axios.patch(`/api/teacher/classes/${cls.id}/update`, payload);
+        }));
+        setAllEvents(prevEvents => prevEvents.map(event => {
+          if (groupStudents.some(g => g.id === event.id)) {
+            return { ...event, status: eventToUpdate.status };
+          }
+          return event;
+        }));
+        setEvents(prevEvents => prevEvents.map(event => {
+          if (groupStudents.some(g => g.id === event.id)) {
+            return { ...event, status: eventToUpdate.status };
+          }
+          return event;
+        }));
+        setSelectedEvent(prev => prev ? { ...prev, status: eventToUpdate.status } : null);
+        setShowDetailsModal(false);
+        toast.success('Group class statuses updated successfully!', {
+          position: 'top-right',
+          autoClose: 2000,
+          hideProgressBar: false,
+          closeOnClick: true,
+          pauseOnHover: true,
+          draggable: true,
+        });
+        refreshEventManager.triggerEventUpdate(eventId, 'class_update', 'teacher');
+        if (window.refreshNotifications) {
+          window.refreshNotifications();
+        }
+        setTimeout(() => {
+          refreshEventManager.triggerRefresh('teacher_class_update');
+        }, 100);
+        window.dispatchEvent(new Event('classUpdated'));
+        setLoading(false);
+        setTimeout(() => setLoading(false), 10);
+      } else {
+        const payload = {
+          teacher_id: eventToUpdate.teacher_id,
+          student_name: eventToUpdate.student_name || eventToUpdate.studentName,
+          class_type: eventToUpdate.class_type || eventToUpdate.classType,
+          schedule: eventToUpdate.date ? (eventToUpdate.date instanceof Date ? eventToUpdate.date.toISOString().split('T')[0] : eventToUpdate.date) : '',
+          time: eventToUpdate.time,
+          status: eventToUpdate.status
+        };
+        const response = await axios.patch(`/api/teacher/classes/${eventId}/update`, payload);
+        const updatedEventData = response.data && response.data.class
+          ? { ...response.data.class }
+          : { ...payload, id: eventId };
+        setAllEvents(prevEvents => {
+          const updated = prevEvents.map(event =>
+            event.id === eventId ? { ...event, ...updatedEventData } : event
+          );
+          setRenderKey(prev => prev + 1);
+          return updated;
+        });
+        setEvents(prevEvents => {
+          const updated = prevEvents.map(event =>
+            event.id === eventId ? { ...event, ...updatedEventData } : event
+          );
+          return updated;
+        });
+        setSelectedEvent(prev => prev ? { ...prev, ...updatedEventData } : null);
+        setShowDetailsModal(false);
+        toast.success('Class updated successfully!', {
+          position: 'top-right',
+          autoClose: 2000,
+          hideProgressBar: false,
+          closeOnClick: true,
+          pauseOnHover: true,
+          draggable: true,
+        });
+        refreshEventManager.triggerEventUpdate(eventId, 'class_update', 'teacher');
+        if (window.refreshNotifications) {
+          window.refreshNotifications();
+        }
+        setTimeout(() => {
+          refreshEventManager.triggerRefresh('teacher_class_update');
+        }, 100);
+        window.dispatchEvent(new Event('classUpdated'));
+        setLoading(false);
+        setTimeout(() => setLoading(false), 10);
+      }
+    } catch (error) {
+      console.error('Error updating class:', error);
+      
+      let errorMessage = 'Error updating class.';
+      if (error.response) {
+        if (error.response.status === 419) {
+          errorMessage = 'Session expired. Please refresh the page and try again.';
+        } else if (error.response.status === 422) {
+          errorMessage = 'Invalid data provided. Please check your input.';
+        } else if (error.response.status === 403) {
+          errorMessage = 'You are not authorized to perform this action.';
+        } else if (error.response.data && error.response.data.message) {
+          errorMessage = error.response.data.message;
+        }
+      }
+      
+      toast.error(errorMessage, {
+        position: 'top-right',
+        autoClose: 5000,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true,
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Handle event updated
-  const handleEventUpdated = (eventId, newStatus) => {
-    // In a real app, you would make an API call here to update the event status
-    // For now, we'll just update the local state
-    const updatedEvents = events.map(event => {
-      if (event.id === eventId) {
-        return { ...event, status: newStatus }
+  const handleEventUpdated = async (eventId, newStatus) => {
+    try {
+      await axios.patch(`/api/teacher/classes/${eventId}/status`, {
+        status: newStatus
+      });
+      
+      // If status is completed, update student stats in backend
+      if (newStatus.toLowerCase() === 'completed') {
+        // Find the event to get student name and class type
+        const event = allEvents.find(e => e.id === eventId);
+        if (event && event.student_name && event.class_type) {
+          // Call backend to recalculate student stats
+          await axios.post(`/api/admin/students/update-from-class-status/${encodeURIComponent(event.student_name)}`);
+          // Show toast notification
+          toast.success('Class marked as completed! Class left -1, Completed +1 for student.', {
+            position: "top-right",
+            autoClose: 2000,
+            hideProgressBar: false,
+            closeOnClick: true,
+            pauseOnHover: true,
+            draggable: true,
+          });
+        }
       }
-      return event
-    })
-    
-    setEvents(updatedEvents)
-    setShowDetailsModal(false)
-    
-    // In a real application, we would show a success message
-    console.log(`Updated class ${eventId} status to ${newStatus}`);
+      
+      // If status is Absent Without Notice, update student stats in backend
+      if (newStatus === 'Absent Without Notice') {
+        // Find the event to get student name and class type
+        const event = allEvents.find(e => e.id === eventId);
+        if (event && event.student_name && event.class_type) {
+          // Call backend to recalculate student stats
+          await axios.post(`/api/admin/students/update-from-class-status/${encodeURIComponent(event.student_name)}`);
+          // Show toast notification
+          toast.success('Class marked as Absent Without Notice! Class left -1, Absent Without Notice +1 for student.', {
+            position: "top-right",
+            autoClose: 2000,
+            hideProgressBar: false,
+            closeOnClick: true,
+            pauseOnHover: true,
+            draggable: true,
+          });
+        }
+      }
+      
+      // Update local state
+      const updatedEvents = allEvents.map(event => 
+        event.id === eventId ? { ...event, status: newStatus } : event
+      );
+      
+      setAllEvents(updatedEvents);
+      
+      // Update displayed events based on current filters
+      if (searchQuery || statusFilter !== 'all') {
+        const filtered = updatedEvents.filter(event => {
+          if (searchQuery && 
+              (!event.student_name || 
+               !event.student_name.toLowerCase().includes(searchQuery.toLowerCase()))) {
+            return false;
+          }
+          if (statusFilter !== 'all' && event.status !== statusFilter) {
+            return false;
+          }
+          return true;
+        });
+        setEvents(filtered);
+      } else {
+        setEvents(updatedEvents);
+      }
+      
+      // Force re-render to update colors immediately
+      setRenderKey(prev => prev + 1);
+      setForceUpdateTimestamp(Date.now());
+      setCalendarKey(prev => prev + 1);
+      
+      // Additional forced update
+      setTimeout(() => {
+        setRenderKey(prev => prev + 1);
+        setForceUpdateTimestamp(Date.now());
+        setCalendarKey(prev => prev + 1);
+      }, 50);
+      
+      // Force state refresh
+      setTimeout(() => {
+        setAllEvents(prevEvents => [...prevEvents]);
+        setEvents(prevEvents => [...prevEvents]);
+      }, 100);
+      
+      setShowDetailsModal(false);
+      
+    } catch (err) {
+      console.error('Error updating class status:', err);
+      // You could add a toast notification here
+    }
   }
 
   // Helper function to get event icon and styling based on class type and status
@@ -496,8 +695,8 @@ export default function TeacherCalendar() {
     
     switch (classType) {
       case "Premium":
-        border = 'border-amber-500';
-        typeIcon = <Gem className="h-3 w-3 text-amber-600 mr-1" />;
+        border = 'border-orange-500';
+        typeIcon = <Gem className="h-3 w-3 text-orange-600 mr-1" />;
         break;
       case "Group":
         border = 'border-orange-500';
@@ -510,65 +709,76 @@ export default function TeacherCalendar() {
         break;
     }
     
-    // Status styling (background color)
+    // Status styling (background color matching admin calendar)
     let bg = '';
     let text = '';
+    let secondaryText = '';
     let statusIcon = null;
     
     switch (status) {
-      case 'FC not consumed (RG)':
-        bg = 'bg-purple-100';
-        text = 'text-purple-900';
-        statusIcon = <Calendar className="h-3 w-3 text-purple-700 mr-1" />;
+      case 'Valid for cancellation':
+      case 'Valid for Cancellation':
+        bg = 'bg-gray-400';
+        text = 'text-white';
+        secondaryText = 'text-white';
+        statusIcon = <Calendar className="h-3 w-3 text-gray-200 mr-1" />;
         break;
-      case 'FC consumed (RG)':
-        bg = 'bg-purple-200';
-        text = 'text-purple-900';
-        statusIcon = <Calendar className="h-3 w-3 text-purple-700 mr-1" />;
+      case 'FC not consumed':
+      case 'Free Class':
+        bg = 'bg-yellow-400';
+        text = 'text-black';
+        secondaryText = 'text-black';
+        statusIcon = <Calendar className="h-3 w-3 text-yellow-200 mr-1" />;
         break;
-      case 'Completed (RG)':
-      case 'completed':
-        bg = 'bg-green-100';
-        text = 'text-green-900';
-        statusIcon = <CheckCircle2 className="h-3 w-3 text-green-700 mr-1" />;
+      case 'Completed':
+        bg = 'bg-green-400';
+        text = 'text-white';
+        secondaryText = 'text-white';
+        statusIcon = <CheckCircle2 className="h-3 w-3 text-green-800 mr-1" />;
         break;
-      case 'Completed (PRM)':
-        bg = 'bg-blue-100';
-        text = 'text-blue-900';
-        statusIcon = <CheckCircle2 className="h-3 w-3 text-blue-700 mr-1" />;
+      case 'Absent w/ntc counted':
+        bg = 'bg-blue-400';
+        text = 'text-white';
+        secondaryText = 'text-white';
+        statusIcon = <AlertCircle className="h-3 w-3 text-blue-800 mr-1" />;
         break;
-      case 'Absent w/ntc counted (RG)':
-        bg = 'bg-yellow-100';
-        text = 'text-yellow-900';
-        statusIcon = <AlertCircle className="h-3 w-3 text-yellow-700 mr-1" />;
+                  case 'Cancelled':
+                bg = 'bg-purple-400';
+                text = 'text-white';
+                secondaryText = 'text-white';
+                statusIcon = <XCircle className="h-3 w-3 text-purple-800 mr-1" />;
+                break;
+      case 'Absent w/ntc-not counted':
+        bg = 'bg-gray-600';
+        text = 'text-white';
+        secondaryText = 'text-white';
+        statusIcon = <AlertCircle className="h-3 w-3 text-gray-800 mr-1" />;
         break;
-      case 'Absent w/o ntc counted (RG)':
-        bg = 'bg-amber-100';
-        text = 'text-amber-900';
-        statusIcon = <AlertCircle className="h-3 w-3 text-amber-700 mr-1" />;
+      case 'FC consumed':
+        bg = 'bg-pink-400';
+        text = 'text-white';
+        secondaryText = 'text-white';
+        statusIcon = <Calendar className="h-3 w-3 text-pink-800 mr-1" />;
         break;
-      case 'Absent w/ntc-not counted (RG)':
-        bg = 'bg-orange-100';
-        text = 'text-orange-900';
-        statusIcon = <AlertCircle className="h-3 w-3 text-orange-700 mr-1" />;
-        break;
-      case 'Cancelled (RG)':
-      case 'cancelled':
-        bg = 'bg-red-100';
-        text = 'text-red-900';
-        statusIcon = <XCircle className="h-3 w-3 text-red-700 mr-1" />;
+      case 'Absent Without Notice':
+        bg = 'bg-red-400';
+        text = 'text-white';
+        secondaryText = 'text-white';
+        statusIcon = <AlertCircle className="h-3 w-3 text-red-800 mr-1" />;
         break;
       case 'scheduled':
       default:
-        bg = 'bg-orange-50';
-        text = 'text-orange-800';
-        statusIcon = <Calendar className="h-3 w-3 text-orange-600" />;
+        bg = 'bg-slate-400';
+        text = 'text-slate-900';
+        secondaryText = 'text-slate-700';
+        statusIcon = <Calendar className="h-3 w-3 text-slate-800" />;
         break;
     }
     
     return {
       bg,
       text,
+      secondaryText,
       border,
       typeIcon,
       statusIcon
@@ -607,7 +817,33 @@ export default function TeacherCalendar() {
 
   return (
     <TeachersLayout>
+      <Head title="My Calendar" />
+      
       <div className="w-full max-w-7xl mx-auto px-2 sm:px-4 lg:px-6">
+        {/* Success Message */}
+        {updateSuccess && (
+          <div className="fixed top-4 right-4 z-50 bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg transform transition-all duration-300 ease-in-out">
+            <div className="flex items-center">
+              <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+              </svg>
+              Class updated successfully!
+            </div>
+          </div>
+        )}
+
+        {/* Teacher Info Header */}
+        <div className="bg-gradient-to-r from-navy-800 to-navy-700 rounded-xl shadow-lg p-4 mb-6 mt-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-xl sm:text-2xl font-bold text-white">My Class Calendar</h1>
+              <p className="text-navy-100 text-sm mt-1">
+                Welcome, {auth.user?.name || 'Teacher'} - View and manage your assigned classes
+              </p>
+            </div>
+          </div>
+        </div>
+        
         <Legend/>
         {/* Combined Action Bar with Search, Filter, and Navigation */}
         <div className="bg-white rounded-xl shadow-md border border-gray-200 p-3 sm:p-4 mb-4 sm:mb-6 mt-4 sm:mt-5">
@@ -642,25 +878,7 @@ export default function TeacherCalendar() {
               >
                 <div className="flex items-center">
                   {statusFilter !== 'all' ? (
-                    <>
-                      {(() => {
-                        const selectedStatus = statusOptions.find(s => s.value === statusFilter);
-                        if (selectedStatus) {
-                          const Icon = selectedStatus.icon;
-                          return (
-                            <>
-                              <span className={`mr-2 ${selectedStatus.bgColor} ${selectedStatus.textColor} rounded-full p-1`}>
-                                <Icon className="h-4 w-4" />
-                              </span>
-                              <span>{selectedStatus.label}</span>
-                            </>
-                          );
-                        }
-                        return (
-                          <span className="capitalize">{statusFilter}</span>
-                        );
-                      })()}
-                    </>
+                    <span className="truncate">{statusFilter}</span>
                   ) : (
                     <span className="text-gray-500">All Statuses</span>
                   )}
@@ -682,7 +900,7 @@ export default function TeacherCalendar() {
                         className={`w-full rounded-md px-3 py-2 text-left text-sm transition-all duration-200 flex items-center ${
                           statusFilter === 'all' 
                             ? 'bg-navy-600 text-white' 
-                            : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                            : 'text-gray-700 hover:bg-gray-100'
                         }`}
                         onMouseDown={(e) => {
                           e.preventDefault();
@@ -690,41 +908,70 @@ export default function TeacherCalendar() {
                           setDropdownOpen(false);
                         }}
                       >
-                        <span className="mr-2">
-                          <span className="h-4 w-4 opacity-0"></span>
-                        </span>
                         All Statuses
-                        {statusFilter === 'all' && (
-                          <Check className="h-4 w-4 text-white ml-auto" />
-                        )}
                       </button>
                       
-                      {statusOptions.map((status) => {
-                        const isSelected = statusFilter === status.value;
+                      {statuses.map((status) => {
+                        // Get status color based on status name (matching legend)
+                        let statusColor = '';
+                        let borderColor = '';
+                        
+                        switch (status) {
+                          case 'Valid for cancellation':
+                            statusColor = 'bg-gray-400';
+                            borderColor = 'border-gray-500';
+                            break;
+                          case 'FC not consumed':
+                            statusColor = 'bg-yellow-400';
+                            borderColor = 'border-yellow-500';
+                            break;
+                          case 'Completed':
+                            statusColor = 'bg-green-400';
+                            borderColor = 'border-green-500';
+                            break;
+                          case 'Absent w/ntc counted':
+                            statusColor = 'bg-blue-400';
+                            borderColor = 'border-blue-500';
+                            break;
+                                                                                  case 'Cancelled':
+                                                            statusColor = 'bg-purple-400';
+                                                            borderColor = 'border-purple-500';
+                                                            break;
+                          case 'Absent w/ntc-not counted':
+                            statusColor = 'bg-gray-600';
+                            borderColor = 'border-gray-600';
+                            break;
+                          case 'FC consumed':
+                            statusColor = 'bg-pink-400';
+                            borderColor = 'border-pink-400';
+                            break;
+                          case 'Absent Without Notice':
+                            statusColor = 'bg-red-400';
+                            borderColor = 'border-red-500';
+                            break;
+                          default:
+                            statusColor = 'bg-[#4B5563]';
+                            borderColor = 'border-[#4B5563]';
+                            break;
+                        }
+                        
                         return (
                           <button
-                            key={status.value}
+                            key={status}
                             type="button"
                             className={`w-full rounded-md px-3 py-2 text-left text-sm transition-all duration-200 flex items-center ${
-                              isSelected 
-                                ? 'bg-navy-600 text-white' 
-                                : `${status.bgColor} ${status.textColor} hover:bg-opacity-80`
+                              statusFilter === status
+                                ? 'bg-navy-600 text-white'
+                                : 'hover:bg-gray-100 text-gray-700'
                             }`}
                             onMouseDown={(e) => {
                               e.preventDefault();
-                              setStatusFilter(status.value);
+                              setStatusFilter(status);
                               setDropdownOpen(false);
                             }}
                           >
-                            <span className={`mr-2 ${isSelected ? 'bg-white bg-opacity-20' : ''} rounded-full p-1`}>
-                              {React.createElement(status.icon, {
-                                className: `h-4 w-4 ${isSelected ? 'text-white' : status.textColor}`
-                              })}
-                            </span>
-                            {status.label}
-                            {isSelected && (
-                              <Check className="h-4 w-4 ml-auto text-white" />
-                            )}
+                            <span className={`w-4 h-4 ${statusColor} ${borderColor} border flex-shrink-0 rounded-sm mr-3`}></span>
+                            {status}
                           </button>
                         );
                       })}
@@ -765,7 +1012,7 @@ export default function TeacherCalendar() {
         </div>
 
         {/* Calendar View */}
-        <div className="bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden w-full">
+        <div key={renderKey} className="bg-white rounded-xl shadow-md border border-gray-200 overflow-hidden w-full">
           <div className="flex items-center justify-between p-2 sm:p-3 bg-navy-700">
             <h2 className="text-sm sm:text-base font-semibold text-white">Monthly View</h2>
           </div>
@@ -803,7 +1050,7 @@ export default function TeacherCalendar() {
                     
                     return (
                     <div 
-                      key={day.date.toISOString()}
+                      key={`${day.date.toISOString()}-${renderKey}-${forceUpdateTimestamp}`}
                       className={`min-h-[4rem] sm:min-h-28 p-1 border-r border-b border-navy-100 transition-colors duration-150 ${
                         day.isCurrentMonth ? 'bg-white hover:bg-navy-50' : 'bg-navy-50/30 text-navy-400 hover:bg-navy-50/50'
                       } ${day.isToday ? 'bg-orange-50 border-l-2 border-l-orange-500' : ''}`}
@@ -824,53 +1071,118 @@ export default function TeacherCalendar() {
                       </div>
 
                       {day.events.total > 0 && (
-                        <div className="mt-1 space-y-0.5">
-                          {day.events.items.slice(0, maxVisibleEvents).map((event, eventIndex) => {
-                            // Safely format time from the event's time string
-                            let eventTime = new Date(day.date);
-                            if (event.time) {
-                              const [hours, minutes] = event.time.split(':');
-                              eventTime.setHours(parseInt(hours, 10) || 0, parseInt(minutes, 10) || 0);
-                            }
+                        <div className="mt-1" style={{ pointerEvents: 'auto' }}>
+                          {/* Display individual cards for group class students - just like admin view */}
+                          {(() => {
+                            const allEvents = [...day.events.items];
                             
-                            return (
-                              <div 
-                                key={eventIndex}
-                                onClick={() => handleEventClick(event)}
-                                className={`text-[9px] p-1 rounded cursor-pointer hover:opacity-90 transition-all duration-200 ${
-                                  getEventStyles(event.class_type, event.status).bg
-                                } border-l-2 ${getEventStyles(event.class_type, event.status).border}`}
-                              >
-                                <div className="flex items-center justify-between">
-                                  <div className="flex items-center overflow-hidden">
-                                    {getEventStyles(event.class_type, event.status).typeIcon}
-                                    <span className={`font-medium truncate max-w-[60px] xs:max-w-[80px] ${getEventStyles(event.class_type, event.status).text}`}>
-                                      {event.student_name}
-                                    </span>
+                            // Sort events by time, then by class type
+                            allEvents.sort((a, b) => {
+                              if (a.time !== b.time) {
+                                return a.time.localeCompare(b.time);
+                              }
+                              if (a.class_type !== b.class_type) {
+                                // Priority: Premium > Group > Regular
+                                const typePriority = { 'Premium': 0, 'Group': 1, 'Regular': 2 };
+                                return typePriority[a.class_type] - typePriority[b.class_type];
+                              }
+                              return 0;
+                            });
+                            
+                            // Group class events should be handled individually for display
+                            const processedEvents = [];
+                            const groupTimeMap = {};
+                            
+                            // First pass: identify group classes
+                            allEvents.forEach(event => {
+                              if (event.class_type === 'Group') {
+                                const key = `${event.time}|${event.teacher_id}`;
+                                if (!groupTimeMap[key]) {
+                                  groupTimeMap[key] = [];
+                                }
+                                groupTimeMap[key].push(event);
+                              } else {
+                                // Non-group events go directly to processed list
+                                processedEvents.push(event);
+                              }
+                            });
+                            
+                            // Second pass: process group classes into individual student cards
+                            Object.values(groupTimeMap).forEach(groupEvents => {
+                              // If there's only one student in this group time slot, treat normally
+                              if (groupEvents.length === 1) {
+                                processedEvents.push(groupEvents[0]);
+                                return;
+                              }
+                              
+                              // For groups with multiple students, create individual cards
+                              groupEvents.forEach((event, index) => {
+                                // Create reference to all students in this group
+                                const allStudents = groupEvents.map(e => e.student_name);
+                                
+                                const enhancedEvent = {
+                                  ...event,
+                                  isIndividualGroupStudent: true,
+                                  original_student_list: allStudents.join(', ')
+                                };
+                                processedEvents.push(enhancedEvent);
+                              });
+                            });
+                            
+                            // Create individual card for each event
+                            const eventCards = processedEvents.map((event, eventIndex) => {
+                              let eventTime = new Date(day.date);
+                              if (event.time) {
+                                const [hours, minutes] = event.time.split(':');
+                                eventTime.setHours(parseInt(hours, 10) || 0, parseInt(minutes, 10) || 0);
+                              }
+                              
+                              const isGroupStudent = event.class_type === 'Group';
+                              
+                              return (
+                                <div
+                                  key={`${event.id}-${eventIndex}-${event.student_name}-${renderKey}-${forceUpdateTimestamp}`}
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    handleEventClick(event);
+                                  }}
+                                  className={`text-xs p-1.5 rounded-md cursor-pointer transition-all duration-200 hover:shadow-md shadow-sm mb-1 last:mb-0 ${getEventStyles(event.class_type, event.status).bg} ${getEventStyles(event.class_type, event.status).text} border-l-4 ${getEventStyles(event.class_type, event.status).border} hover:bg-opacity-80`}
+                                  style={{ userSelect: 'none', WebkitUserSelect: 'none' }}
+                                >
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-1 overflow-hidden">
+                                      {getEventStyles(event.class_type, event.status).typeIcon}
+                                      <span className="font-semibold truncate max-w-[70px] xs:max-w-[100px]">{event.student_name}</span>
+                                    </div>
+                                    <span className="text-xs font-medium opacity-80 ml-2">{event.class_type}</span>
+                                  </div>
+                                  <div className="flex items-center gap-2 mt-0.5 text-[10px] opacity-80">
+                                    <Clock className="h-3 w-3 mr-1 text-navy-400" />
+                                    {eventTime.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', hour12: true })}
                                   </div>
                                 </div>
-                                <div className="flex items-center justify-between mt-0.5 text-[8px] text-navy-500">
-                                  <span>
-                                    {eventTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                  </span>
-                                  <span className="flex items-center">
-                                    <span className="text-[8px] font-medium">
-                                      {event.class_type}
-                                    </span>
-                                  </span>
-                                </div>
-                              </div>
-                            );
-                          })}
+                              );
+                            });
+                            
+                            // Show up to maxVisibleEvents
+                            return eventCards.slice(0, maxVisibleEvents);
+                          })()}
                           {hasMoreEvents && (
                             <button 
                               onClick={(e) => {
+                                console.log('Teacher +X more button clicked for date:', day.date);
                                 e.stopPropagation();
-                                setSelectedDate(day.date);
+                                
+                                // Use our processed events for consistent handling
+                                // This ensures all events are shown in the more dialog, including individual group class students
+                                const hiddenEvents = processedEvents.slice(maxVisibleEvents);
+                                console.log('Teacher hidden events:', hiddenEvents);
+                                handleMoreClassesClick(hiddenEvents, day.date);
                               }}
-                              className="text-[9px] text-navy-500 hover:text-navy-700 w-full text-left px-1 py-0.5 hover:bg-navy-50 rounded"
+                              className="text-xs text-navy-500 hover:text-navy-700 w-full text-left px-1 py-0.5 hover:bg-navy-50 rounded mb-1"
                             >
-                              +{day.events.total - maxVisibleEvents} more
+                              +{processedEvents.length - maxVisibleEvents} more
                             </button>
                           )}
                         </div>
@@ -887,16 +1199,34 @@ export default function TeacherCalendar() {
       {/* Event Details Modal */}
       <DetailsCalendarModal
         isOpen={showDetailsModal}
-        onClose={() => setShowDetailsModal(false)}
+        onClose={() => {
+          console.log('Teacher details modal closing');
+          setShowDetailsModal(false);
+        }}
         event={selectedEvent}
-        onNotesChange={handleNotesChange}
-        onSaveNotes={handleSaveNotes}
+        onStatusChange={handleStatusChange}
+        onNotesSave={handleSaveNotes}
+        onJoinClass={handleUpdateClass}
       />
-      {/* Debug info */}
-      <div className="hidden">
-        Modal state: {showDetailsModal ? 'open' : 'closed'}, 
-        Selected event: {selectedEvent ? JSON.stringify(selectedEvent) : 'none'}
-      </div>
+
+      {/* More Classes Modal */}
+      <MoreClassesModal
+        isOpen={showMoreClassesModal}
+        onClose={() => {
+          console.log('Teacher MoreClassesModal closing');
+          setShowMoreClassesModal(false);
+        }}
+        classes={selectedDayEvents}
+        timeSlot="Additional Classes"
+        day={selectedDayDate ? selectedDayDate.toLocaleDateString('en-US', { 
+          weekday: 'long', 
+          year: 'numeric', 
+          month: 'long', 
+          day: 'numeric' 
+        }) : ''}
+        onClassClick={handleEventClick}
+      />
+      <ToastContainer />
     </TeachersLayout>
   )
 }

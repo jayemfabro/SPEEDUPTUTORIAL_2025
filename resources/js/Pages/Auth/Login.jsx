@@ -2,38 +2,38 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Mail, Lock, ArrowRight, Loader2 } from "lucide-react";
-import { router } from "@inertiajs/react";
+import { Head, useForm } from "@inertiajs/react";
+import DeactivatedAccountModal from '@/Components/DeactivatedAccountModal';
 
-export default function LoginPage() {
-    const [formData, setFormData] = useState({
-        email: "",
-        password: "",
+export default function LoginPage({ status, canResetPassword }) {
+    const { data, setData, post, processing, errors, reset } = useForm({
+        email: '',
+        password: '',
         remember: false,
     });
-    const [processing, setProcessing] = useState(false);
+    
     const [loginAttempts, setLoginAttempts] = useState(0);
     const [showTip, setShowTip] = useState(false);
-    const [errors, setErrors] = useState({});
-    const [status, setStatus] = useState("");
     const [isMounted, setIsMounted] = useState(false);
+    const [showDeactivatedModal, setShowDeactivatedModal] = useState(false);
 
     useEffect(() => {
         setIsMounted(true);
         return () => setIsMounted(false);
     }, []);
 
+    // Check for teacher deactivation error
+    useEffect(() => {
+        if (errors.account_deactivated === 'teacher_deactivated') {
+            setShowDeactivatedModal(true);
+        }
+    }, [errors.account_deactivated]);
+
     const handleSubmit = (e) => {
         e.preventDefault();
-        setProcessing(true);
         
-        router.post(route("login"), {
-            email: formData.email,
-            password: formData.password,
-            remember: formData.remember
-        }, {
+        post(route("login"), {
             onFinish: () => {
-                setProcessing(false);
-                
                 // Show password tip after multiple failed attempts
                 if (errors.email || errors.password) {
                     setLoginAttempts(prev => prev + 1);
@@ -46,16 +46,27 @@ export default function LoginPage() {
     };
 
     const handleChange = (field, value) => {
-        setFormData((prev) => ({
-            ...prev,
-            [field]: value,
-        }));
+        setData(field, value);
+    };
+
+    const handleCloseDeactivatedModal = () => {
+        setShowDeactivatedModal(false);
+        reset(); // Clear form errors
     };
 
     if (!isMounted) return null;
 
     return (
-        <div className="min-h-screen bg-orange-50 flex items-center justify-center p-4 sm:p-6 lg:p-8">
+        <>
+            <Head title="Login" />
+            
+            {/* Deactivated Account Modal */}
+            <DeactivatedAccountModal 
+                isOpen={showDeactivatedModal} 
+                onClose={handleCloseDeactivatedModal} 
+            />
+            
+            <div className="min-h-screen bg-orange-50 flex items-center justify-center p-4 sm:p-6 lg:p-8">
             <motion.div
                 className="w-full max-w-md"
                 initial={{ opacity: 0, y: 20 }}
@@ -67,8 +78,8 @@ export default function LoginPage() {
                     className="space-y-4 mb-6"
                     initial={{ opacity: 0, height: 0 }}
                     animate={{
-                        opacity: status || errors.general ? 1 : 0,
-                        height: status || errors.general ? "auto" : 0,
+                        opacity: status || errors.general || errors.email ? 1 : 0,
+                        height: status || errors.general || errors.email ? "auto" : 0,
                     }}
                     transition={{ duration: 0.3 }}
                 >
@@ -180,7 +191,7 @@ export default function LoginPage() {
                                     id="email"
                                     type="email"
                                     name="email"
-                                    value={formData.email}
+                                    value={data.email}
                                     className={`w-full pl-10 pr-4 py-3 border ${
                                         errors.email
                                             ? "border-red-300"
@@ -230,7 +241,7 @@ export default function LoginPage() {
                                     id="password"
                                     type="password"
                                     name="password"
-                                    value={formData.password}
+                                    value={data.password}
                                     className={`w-full pl-10 pr-4 py-3 border ${
                                         errors.password
                                             ? "border-red-300"
@@ -277,7 +288,7 @@ export default function LoginPage() {
                                     <input
                                         type="checkbox"
                                         name="remember"
-                                        checked={formData.remember}
+                                        checked={data.remember}
                                         onChange={(e) =>
                                             handleChange(
                                                 "remember",
@@ -288,12 +299,12 @@ export default function LoginPage() {
                                     />
                                     <div
                                         className={`w-5 h-5 rounded border-2 ${
-                                            formData.remember
+                                            data.remember
                                                 ? "bg-orange-500 border-orange-500"
                                                 : "border-gray-300 group-hover:border-orange-400"
                                         } flex items-center justify-center transition-colors duration-200`}
                                     >
-                                        {formData.remember && (
+                                        {data.remember && (
                                             <svg
                                                 className="w-3 h-3 text-white"
                                                 fill="none"
@@ -379,5 +390,6 @@ export default function LoginPage() {
                 </motion.div>
             </motion.div>
         </div>
+        </>
     );
 }
