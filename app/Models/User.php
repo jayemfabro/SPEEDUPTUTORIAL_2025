@@ -235,4 +235,182 @@ class User extends Authenticatable
         // Default placeholder image
         return asset('Logo/SpeedUp.png');
     }
+    
+    /**
+     * Get teacher's classes based on various filters
+     *
+     * @param string|null $status Optional status filter (Completed, Upcoming, Cancelled, etc.)
+     * @param string|null $date Optional specific date filter (YYYY-MM-DD)
+     * @param bool $includeStats Include statistical data in the response
+     * @return \Illuminate\Database\Eloquent\Collection|\Illuminate\Support\Collection|array
+     */
+    public function getTeacherClasses($status = null, $date = null, $includeStats = false)
+    {
+        if (!$this->isTeacher()) {
+            return collect();
+        }
+        
+        // Base query to get the teacher's classes
+        $query = \App\Models\Admin\ClassModel::where('teacher_id', $this->id);
+        
+        // Apply status filter if provided
+        if ($status) {
+            if ($status === 'Upcoming') {
+                $query->whereDate('schedule', '>=', now()->format('Y-m-d'))
+                      ->where(function($q) {
+                          $q->where('status', '!=', 'Completed')
+                            ->where('status', '!=', 'Cancelled');
+                      });
+            } else {
+                $query->where('status', $status);
+            }
+        }
+        
+        // Apply date filter if provided
+        if ($date) {
+            $query->whereDate('schedule', $date);
+        }
+        
+        // Get upcoming classes for statistics (separate query)
+        $upcomingClassesQuery = \App\Models\Admin\ClassModel::where('teacher_id', $this->id)
+            ->whereDate('schedule', '>=', now()->format('Y-m-d'))
+            ->where(function($q) {
+                $q->where('status', '!=', 'Completed')
+                  ->where('status', '!=', 'Cancelled');
+            });
+        
+        // Get the classes
+        $classes = $query->with('student')->get();
+        
+        // Include statistics if requested
+        if ($includeStats) {
+            $totalClasses = $classes->count();
+            $completedClasses = $classes->where('status', 'Completed')->count();
+            $cancelledClasses = $classes->where('status', 'Cancelled')->count();
+            
+            // Count upcoming classes with separate query to catch future classes
+            $upcomingClasses = $upcomingClassesQuery->count();
+            
+            $absences = $classes->filter(function($class) {
+                return str_contains(strtolower($class->status), 'absent');
+            })->count();
+            
+            // Get unique students - if no classes, return 0
+            $uniqueStudents = $classes->isEmpty() ? 0 : $classes->pluck('student_name')->unique()->count();
+            
+            // For debugging purposes - log information
+            \Illuminate\Support\Facades\Log::info('Teacher class stats', [
+                'teacher_id' => $this->id,
+                'teacher_name' => $this->name,
+                'total_classes' => $totalClasses,
+                'upcoming_classes' => $upcomingClasses,
+                'unique_students' => $uniqueStudents,
+                'absences' => $absences
+            ]);
+            
+            return [
+                'classes' => $classes,
+                'stats' => [
+                    'total_classes' => $totalClasses,
+                    'completed_classes' => $completedClasses,
+                    'cancelled_classes' => $cancelledClasses,
+                    'upcoming_classes' => $upcomingClasses,
+                    'absences' => $absences,
+                    'unique_students' => $uniqueStudents
+                ]
+            ];
+        }
+        
+        return $classes;
+    }
+    
+    /**
+     * Get teacher's dashboard statistics
+     * 
+     * @return array
+     */
+    public function getTeacherDashboardStats()
+    {
+        // Default values
+        $defaultStats = [
+            'total_students' => 0,
+            'total_classes' => 0,
+            'upcoming_classes' => 0,
+            'total_absences' => 0,
+            'totalStudents' => 0,
+            'totalClasses' => 0,
+            'teacherAbsences' => 0,
+            'classesThisMonth' => 0
+        ];
+        
+        if (!$this->isTeacher()) {
+            return $defaultStats;
+        }
+        
+        try {
+            // Get unique students who have classes with this teacher
+            $uniqueStudentsCount = \App\Models\Admin\ClassModel::where('teacher_id', $this->id)
+                ->distinct('student_name')
+                ->count('student_name');
+            
+            // Get total classes for this teacher
+            $totalClasses = \App\Models\Admin\ClassModel::where('teacher_id', $this->id)
+                ->count();
+            
+            // Get upcoming classes
+            $upcomingClasses = \App\Models\Admin\ClassModel::where('teacher_id', $this->id)
+                ->whereDate('schedule', '>=', now()->format('Y-m-d'))
+                ->where(function($q) {
+                    $q->where('status', '!=', 'Completed')
+                      ->where('status', '!=', 'Cancelled');
+                })
+                ->count();
+            
+            // Get absences
+            $absences = \App\Models\Admin\ClassModel::where('teacher_id', $this->id)
+                ->where('status', 'like', '%Absent%')
+                ->count();
+            
+            // Get this month's classes
+            $currentMonth = \Carbon\Carbon::now()->month;
+            $currentYear = \Carbon\Carbon::now()->year;
+            $thisMonthClasses = \App\Models\Admin\ClassModel::where('teacher_id', $this->id)
+                ->whereMonth('created_at', $currentMonth)
+                ->whereYear('created_at', $currentYear)
+                ->count();
+            
+            // Prepare return array with explicit integer conversion
+            $stats = [
+                // Use both naming conventions to ensure compatibility with both components
+                'total_students' => (int) $uniqueStudentsCount,
+                'total_classes' => (int) $totalClasses,
+                'upcoming_classes' => (int) $upcomingClasses,
+                'total_absences' => (int) $absences,
+                
+                // Dashboard.jsx format
+                'totalStudents' => (int) $uniqueStudentsCount,
+                'totalClasses' => (int) $totalClasses,
+                'classesThisMonth' => (int) $thisMonthClasses,
+                'teacherAbsences' => (int) $absences
+            ];
+            
+            // Log the data we're returning for debugging
+            \Illuminate\Support\Facades\Log::info('Teacher dashboard stats', [
+                'teacher_id' => $this->id,
+                'teacher_name' => $this->name,
+                'stats' => $stats
+            ]);
+            
+            return $stats;
+            
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('Error calculating teacher stats: ' . $e->getMessage(), [
+                'teacher_id' => $this->id,
+                'teacher_name' => $this->name,
+                'trace' => $e->getTraceAsString()
+            ]);
+            
+            return $defaultStats;
+        }
+    }
 }

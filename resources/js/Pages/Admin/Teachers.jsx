@@ -626,7 +626,13 @@ export default function Teachers() {
                                                 </span>
                                             </div>
                                         </div>
-                                        <div className="mt-2 flex justify-end border-t border-gray-100 pt-1.5">
+                                        <div className="mt-2 flex justify-end gap-2 border-t border-gray-100 pt-1.5">
+                                            <button 
+                                                onClick={() => window.location.href = `/admin/teacher/${teacher.id}/overview`}
+                                                className="inline-flex items-center px-2.5 py-1 border border-transparent text-xs leading-4 font-medium rounded text-white bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 focus:outline-none focus:ring-1 focus:ring-orange-500 transition-all duration-200 transform hover:scale-105 shadow-sm"
+                                            >
+                                                View Overview
+                                            </button>
                                             <button 
                                                 onClick={() => openDetailsModal(teacher)}
                                                 className="inline-flex items-center px-2.5 py-1 border border-transparent text-xs leading-4 font-medium rounded text-white bg-gradient-to-r from-navy-600 to-navy-700 hover:from-navy-700 hover:to-navy-800 focus:outline-none focus:ring-1 focus:ring-navy-500 transition-all duration-200 transform hover:scale-105 shadow-sm"

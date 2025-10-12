@@ -39,9 +39,53 @@ class DashboardController extends Controller
      */
     public function getTeacherStats($teacherId)
     {
-        $stats = $this->getDashboardStats($teacherId);
-        
-        return response()->json($stats);
+        try {
+            // First try using our new User model method for teacher stats if valid teacher ID
+            if ($teacherId && $teacherId !== 'all') {
+                $teacher = User::find($teacherId);
+                if ($teacher && $teacher->isTeacher()) {
+                    $teacherStats = $teacher->getTeacherDashboardStats();
+                    
+                    // Add additional relevant information
+                    $teacherName = $teacher->getFullNameAttribute();
+                    $teacherImage = $teacher->profile_photo_url;
+                    
+                    // Get upcoming classes data for this teacher
+                    $upcomingClasses = \App\Models\Admin\ClassModel::where('teacher_id', $teacher->id)
+                        ->whereDate('schedule', '>=', now()->format('Y-m-d'))
+                        ->where(function($q) {
+                            $q->where('status', '!=', 'Completed')
+                              ->where('status', '!=', 'Cancelled');
+                        })
+                        ->count();
+                    
+                    // Make sure we have all needed fields, with multiple naming conventions for compatibility
+                    $response = array_merge($teacherStats, [
+                        'teacher_id' => $teacher->id,
+                        'teacher_name' => $teacherName,
+                        'teacher_image' => $teacherImage,
+                        'current_date' => now()->format('F d, Y'),
+                        'upcoming_classes' => $teacherStats['upcoming_classes'] ?? $upcomingClasses,
+                        'total_absences' => $teacherStats['total_absences'] ?? 0
+                    ]);
+                    
+                    \Log::info('Teacher stats response:', $response);
+                    
+                    return response()->json($response);
+                }
+            }
+            
+            // Fall back to the original method if teacher not found or "all" is specified
+            $stats = $this->getDashboardStats($teacherId);
+            return response()->json($stats);
+            
+        } catch (\Exception $e) {
+            \Log::error('Error getting teacher stats: ' . $e->getMessage());
+            return response()->json([
+                'error' => 'Failed to retrieve teacher statistics',
+                'message' => $e->getMessage()
+            ], 500);
+        }
     }
 
     /**

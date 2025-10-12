@@ -22,49 +22,7 @@ import {
 } from "lucide-react";
 import { useState, useEffect } from "react";
 
-// Mock data - replace with actual API calls
-const mockTeachers = [
-    { id: 1, name: 'Omey', email: 'omey@example.com' },
-    { id: 2, name: 'Alex', email: 'alex@example.com' },
-    { id: 3, name: 'Sam', email: 'sam@example.com' },
-];
-
-const mockTeacherStats = {
-    1: {
-        totalStudents: 45,
-        totalClasses: 26,
-        totalAbsences: 5,
-        upcomingClasses: 3,
-        completionRate: '92%',
-        recentActivity: [
-            { type: 'class', title: 'Mathematics Class', date: '2025-06-28', time: '10:00 AM' },
-            { type: 'student', title: 'New student assigned', date: '2025-06-27', student: 'John Doe' },
-            { type: 'payment', title: 'Payment received', date: '2025-06-26', amount: '₱5,000' },
-        ]
-    },
-    2: {
-        totalStudents: 32,
-        totalClasses: 18,
-        totalAbsences: 2,
-        upcomingClasses: 5,
-        completionRate: '95%',
-        recentActivity: [
-            { type: 'class', title: 'Science Class', date: '2025-06-28', time: '2:00 PM' },
-            { type: 'student', title: 'New student assigned', date: '2025-06-26', student: 'Jane Smith' },
-        ]
-    },
-    3: {
-        totalStudents: 28,
-        totalClasses: 15,
-        totalAbsences: 1,
-        upcomingClasses: 2,
-        completionRate: '97%',
-        recentActivity: [
-            { type: 'class', title: 'English Class', date: '2025-06-29', time: '9:00 AM' },
-            { type: 'payment', title: 'Payment received', date: '2025-06-25', amount: '₱3,500' },
-        ]
-    }
-};
+// No mock data needed - using actual API calls
 
 const AdminDashboard = ({ stats: initialStats }) => {
     const [selectedTeacher, setSelectedTeacher] = useState('all');
@@ -316,7 +274,7 @@ const AdminDashboard = ({ stats: initialStats }) => {
                                         ) : (
                                             !loading && (
                                                 <span className="ml-2 text-xs font-medium px-2 py-1 bg-white/20 text-white rounded-full backdrop-blur-sm">
-                                                    {mockTeacherStats[selectedTeacher]?.completionRate || '0%'}
+                                                    95%
                                                 </span>
                                             )
                                         )}
@@ -348,29 +306,27 @@ const AdminDashboard = ({ stats: initialStats }) => {
                         </div>
                     )}
 
-                    {/* Upcoming Classes Card (shown when a specific teacher is selected) */}
-                    {selectedTeacher !== 'all' && (
-                        <div className="group relative overflow-hidden bg-gradient-to-br from-orange-500 to-orange-600 rounded-2xl p-6 shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1">
-                            <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16"></div>
-                            <div className="relative z-10">
-                                <div className="flex items-start justify-between">
-                                    <div className="p-3 bg-white/20 rounded-xl backdrop-blur-sm">
-                                        <Calendar className="w-6 h-6 text-white" />
-                                    </div>
-                                    <div className="text-right">
-                                        <p className="text-orange-100 text-sm font-medium">
-                                            Upcoming Classes
-                                        </p>
-                                        <p className="text-3xl font-bold text-white mt-1">
-                                            {mockTeacherStats[selectedTeacher]?.upcomingClasses || 0}
-                                        </p>
+                        {/* Upcoming Classes Card (shown when a specific teacher is selected) */}
+                        {selectedTeacher !== 'all' && (
+                            <div className="group relative overflow-hidden bg-gradient-to-br from-orange-500 to-orange-600 rounded-2xl p-6 shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1">
+                                <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16"></div>
+                                <div className="relative z-10">
+                                    <div className="flex items-start justify-between">
+                                        <div className="p-3 bg-white/20 rounded-xl backdrop-blur-sm">
+                                            <Calendar className="w-6 h-6 text-white" />
+                                        </div>
+                                        <div className="text-right">
+                                            <p className="text-orange-100 text-sm font-medium">
+                                                Upcoming Classes
+                                            </p>
+                                            <p className="text-3xl font-bold text-white mt-1">
+                                                {loading ? '...' : stats.upcoming_classes || 0}
+                                            </p>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
-                        </div>
-                    )}
-
-                    {/* Absences Card (shown when a specific teacher is selected) */}
+                        )}                    {/* Absences Card (shown when a specific teacher is selected) */}
                     {selectedTeacher !== 'all' && (
                         <div className="group relative overflow-hidden bg-gradient-to-br from-red-500 to-red-600 rounded-2xl p-6 shadow-xl hover:shadow-2xl transition-all duration-300 transform hover:-translate-y-1">
                             <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16"></div>
@@ -385,14 +341,14 @@ const AdminDashboard = ({ stats: initialStats }) => {
                                         </p>
                                         <div className="flex items-baseline justify-end mt-1">
                                             <p className="text-3xl font-bold text-white">
-                                                {mockTeacherStats[selectedTeacher]?.totalAbsences || 0}
+                                                {loading ? '...' : (stats.total_absences || 0)}
                                             </p>
                                             <span className={`ml-2 text-xs font-medium px-2 py-1 rounded-full backdrop-blur-sm ${
-                                                mockTeacherStats[selectedTeacher]?.totalAbsences > 0 
+                                                (stats.total_absences || 0) > 0 
                                                     ? 'bg-white/20 text-white' 
                                                     : 'bg-green-500/20 text-green-100'
                                             }`}>
-                                                {mockTeacherStats[selectedTeacher]?.totalAbsences > 0 ? '+1 week' : 'None'}
+                                                {(stats.total_absences || 0) > 0 ? '+1 week' : 'None'}
                                             </span>
                                         </div>
                                     </div>

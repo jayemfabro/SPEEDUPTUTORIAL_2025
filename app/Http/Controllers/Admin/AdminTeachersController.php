@@ -173,7 +173,63 @@ class AdminTeachersController extends Controller
      */
     public function show(User $teacher)
     {
-        return response()->json($teacher);
+        if (!$teacher->isTeacher()) {
+            return response()->json(['error' => 'User is not a teacher'], 404);
+        }
+        
+        try {
+            // Get teacher dashboard stats
+            $dashboardStats = $teacher->getTeacherDashboardStats();
+            
+            // Get upcoming classes
+            $upcomingClasses = \App\Models\Admin\ClassModel::where('teacher_id', $teacher->id)
+                ->whereDate('schedule', '>=', now()->format('Y-m-d'))
+                ->where(function($q) {
+                    $q->where('status', '!=', 'Completed')
+                    ->where('status', '!=', 'Cancelled');
+                })
+                ->with('student') // Include student relationship if needed
+                ->orderBy('schedule')
+                ->orderBy('time')
+                ->limit(5)
+                ->get()
+                ->map(function($class) {
+                    return [
+                        'id' => $class->id,
+                        'student_name' => $class->student_name,
+                        'class_type' => $class->class_type,
+                        'schedule' => $class->schedule,
+                        'time' => $class->time,
+                        'status' => $class->status,
+                    ];
+                });
+            
+            // Format the response to include both teacher details, stats and upcoming classes
+            $teacherData = [
+                'id' => $teacher->id,
+                'name' => $teacher->getFullNameAttribute() ?: 'Unknown',
+                'firstName' => $teacher->first_name,
+                'middleName' => $teacher->middle_name,
+                'lastName' => $teacher->last_name,
+                'username' => $teacher->username,
+                'email' => $teacher->email,
+                'phone' => $teacher->phone,
+                'birthdate' => $teacher->birthdate ? $teacher->birthdate->format('m/d/Y') : null,
+                'birthdateRaw' => $teacher->birthdate ? $teacher->birthdate->format('Y-m-d') : null,
+                'image' => $teacher->profile_photo_url,
+                'status' => $teacher->status ?? 'active',
+                'dashboardStats' => $dashboardStats,
+                'upcomingClasses' => $upcomingClasses
+            ];
+            
+            return response()->json($teacherData);
+        } catch (\Exception $e) {
+            \Log::error('Error getting teacher details: ' . $e->getMessage());
+            return response()->json([
+                'error' => 'Failed to retrieve teacher details',
+                'message' => $e->getMessage()
+            ], 500);
+        }
     }
 
     /**

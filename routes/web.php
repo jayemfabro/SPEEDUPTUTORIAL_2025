@@ -94,20 +94,6 @@ Route::middleware('auth')->group(function () {
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
-    
-    // Debug routes for profile photo
-    Route::get('/debug/profile-photo', [\App\Http\Controllers\DebugController::class, 'checkProfilePhoto']);
-    Route::get('/debug/teacher-photo', function() {
-        $teacher = \App\Models\User::where('role', 'teacher')->first();
-        return [
-            'user_id' => $teacher->id,
-            'name' => $teacher->name,
-            'profile_photo_path' => $teacher->profile_photo_path,
-            'profile_photo_url' => $teacher->profile_photo_url,
-            'image' => $teacher->image,
-            'storage_exists' => $teacher->profile_photo_path ? \Illuminate\Support\Facades\Storage::disk('public')->exists($teacher->profile_photo_path) : false,
-        ];
-    });
 });
 
 require __DIR__.'/auth.php';
@@ -146,6 +132,7 @@ Route::middleware(['auth', 'verified', 'role:teacher'])->prefix('api/teacher')->
 Route::middleware(['auth', 'verified', 'role:admin'])->prefix('admin')->name('admin.')->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
     Route::get('/teachers', fn() => Inertia::render('Admin/Teachers'))->name('teachers');
+    Route::get('/teacher/{id}/overview', fn($id) => Inertia::render('Admin/TeacherOverview', ['teacherId' => $id]))->name('teacher.overview');
     Route::get('/students', fn() => Inertia::render('Admin/Students'))->name('students');
     Route::get('/classes', fn() => Inertia::render('Admin/AdminClasses'))->name('classes');
     Route::get('/calendar', fn() => Inertia::render('Admin/AdminCalendar'))->name('calendar');
@@ -163,6 +150,15 @@ Route::middleware(['web', 'auth', 'verified', 'role:admin'])->prefix('api/admin'
     Route::apiResource('teachers', AdminTeachersController::class);
     Route::patch('teachers/{teacher}/status', [AdminTeachersController::class, 'updateStatus'])->name('teachers.status');
     Route::get('active-teachers', [AdminTeachersController::class, 'getActiveTeachers'])->name('teachers.active');
+    Route::get('teachers/{id}/classes', function($id) {
+        $teacher = \App\Models\User::findOrFail($id);
+        if (!$teacher->isTeacher()) {
+            return response()->json(['error' => 'User is not a teacher'], 404);
+        }
+        
+        $classesWithStats = $teacher->getTeacherClasses(null, null, true);
+        return response()->json($classesWithStats);
+    })->name('teachers.classes');
     
     // Classes routes
     Route::apiResource('classes', AdminClassController::class);
@@ -243,10 +239,6 @@ Route::middleware(['auth', 'verified'])->prefix('api/notifications')->name('api.
     Route::post('read-all', [App\Http\Controllers\NotificationController::class, 'markAllAsRead'])->name('read-all');
     Route::get('unread-count', [App\Http\Controllers\NotificationController::class, 'getUnreadCount'])->name('unread-count');
     Route::delete('{id}', [App\Http\Controllers\NotificationController::class, 'destroy'])->name('delete');
-    
-    // Test routes for development
-    Route::post('test', [App\Http\Controllers\TestNotificationController::class, 'createTestNotification'])->name('test');
-    Route::post('test-teacher-update', [App\Http\Controllers\TestNotificationController::class, 'createTeacherUpdateNotification'])->name('test-teacher-update');
 });
 
 /*
