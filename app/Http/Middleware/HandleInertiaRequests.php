@@ -29,8 +29,17 @@ class HandleInertiaRequests extends Middleware
      */
     public function share(Request $request): array
     {
+        $parentShare = parent::share($request);
+        
+        // Ensure parent::share returns an array
+        if (!is_array($parentShare)) {
+            // Log the issue or handle it appropriately
+            \Log::error('Parent share is not an array', ['type' => gettype($parentShare)]);
+            $parentShare = []; // Default to empty array to prevent errors
+        }
+        
         return [
-            ...parent::share($request),
+            ...$parentShare,
             'auth' => [
                 'user' => $request->user(),
             ],
