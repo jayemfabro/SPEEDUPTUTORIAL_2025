@@ -20,7 +20,14 @@
         <!-- Scripts -->
         @routes
         @viteReactRefresh
-        @vite(['resources/js/app.jsx'])
+        {{-- Build the vite entries array safely to avoid unpack errors if $page is missing or malformed --}}
+        @php
+            $viteEntries = ['resources/js/app.jsx'];
+            if (isset($page) && is_array($page) && !empty($page['component']) && is_string($page['component'])) {
+                $viteEntries[] = "resources/js/Pages/{$page['component']}.jsx";
+            }
+        @endphp
+        @vite($viteEntries)
         @inertiaHead
     </head>
     <body class="font-sans antialiased">
